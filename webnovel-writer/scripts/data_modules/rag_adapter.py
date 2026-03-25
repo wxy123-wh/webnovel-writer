@@ -38,6 +38,7 @@ from .observability import safe_append_perf_timing, safe_log_tool_call
 logger = logging.getLogger(__name__)
 
 RAG_SCHEMA_VERSION = "2"
+CONSISTENCY_META_VERSION = "f03-v1"
 VECTOR_REQUIRED_COLUMNS = (
     "chunk_id",
     "chapter",
@@ -192,16 +193,72 @@ class RAGAdapter:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        self._set_schema_meta(cursor, "schema_version", RAG_SCHEMA_VERSION)
+        self._set_schema_meta_default(cursor, "consistency_version", CONSISTENCY_META_VERSION)
+        self._set_schema_meta_default(
+            cursor,
+            "consistency_updated_at",
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        self._set_schema_meta_default(cursor, "consistency_source", "rag_adapter.init")
+
+    def _set_schema_meta(self, cursor, key: str, value: str) -> None:
         cursor.execute(
             """
             INSERT INTO rag_schema_meta (key, value, updated_at)
-            VALUES ('schema_version', ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(key) DO UPDATE SET
                 value = excluded.value,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (RAG_SCHEMA_VERSION,),
+            (key, str(value)),
         )
+
+    def _set_schema_meta_default(self, cursor, key: str, value: str) -> None:
+        cursor.execute(
+            """
+            INSERT INTO rag_schema_meta (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO NOTHING
+            """,
+            (key, str(value)),
+        )
+
+    def get_consistency_meta(self) -> Dict[str, Any]:
+        meta: Dict[str, Any] = {
+            "schema_version": "",
+            "consistency_version": CONSISTENCY_META_VERSION,
+            "consistency_updated_at": "",
+            "consistency_source": "",
+            "vectors_db": str(self.config.vector_db),
+        }
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            if not self._table_exists(cursor, "rag_schema_meta"):
+                return meta
+            cursor.execute("SELECT key, value, updated_at FROM rag_schema_meta")
+            for key, value, updated_at in cursor.fetchall():
+                key = str(key or "")
+                if key in {"schema_version", "consistency_version", "consistency_updated_at", "consistency_source"}:
+                    meta[key] = str(value or "")
+                if key == "consistency_updated_at" and not meta["consistency_updated_at"]:
+                    meta["consistency_updated_at"] = str(updated_at or "")
+        return meta
+
+    def touch_consistency_meta(
+        self,
+        *,
+        source: str = "rag_adapter",
+        version: str = CONSISTENCY_META_VERSION,
+    ) -> Dict[str, Any]:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            self._set_schema_meta(cursor, "consistency_version", str(version or CONSISTENCY_META_VERSION))
+            self._set_schema_meta(cursor, "consistency_updated_at", now)
+            self._set_schema_meta(cursor, "consistency_source", str(source or "rag_adapter"))
+            conn.commit()
+        return self.get_consistency_meta()
 
     def _ensure_tables(self, cursor) -> None:
         # 向量存储表
@@ -1365,7 +1422,7 @@ class RAGAdapter:
 
     # ==================== 统计 ====================
 
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self) -> Dict[str, Any]:
         """获取 RAG 统计"""
         with self._get_conn() as conn:
             cursor = conn.cursor()
@@ -1382,7 +1439,8 @@ class RAGAdapter:
             return {
                 "vectors": vectors,
                 "terms": terms,
-                "max_chapter": max_chapter
+                "max_chapter": max_chapter,
+                "consistency_meta": self.get_consistency_meta(),
             }
 
 
@@ -1401,6 +1459,11 @@ def main():
 
     # 获取统计
     subparsers.add_parser("stats")
+
+    consistency_parser = subparsers.add_parser("consistency-meta")
+    consistency_parser.add_argument("--touch", action="store_true", help="写入一致性元数据")
+    consistency_parser.add_argument("--source", default="rag_adapter.cli")
+    consistency_parser.add_argument("--version", default=CONSISTENCY_META_VERSION)
 
     # 写入索引
     index_parser = subparsers.add_parser("index-chapter")
@@ -1473,6 +1536,13 @@ def main():
         stats = adapter.get_stats()
         emit_success(stats, message="stats")
 
+    elif args.command == "consistency-meta":
+        if args.touch:
+            meta = adapter.touch_consistency_meta(source=args.source, version=args.version)
+            emit_success(meta, message="consistency_meta_touched")
+        else:
+            emit_success(adapter.get_consistency_meta(), message="consistency_meta")
+
     elif args.command == "index-chapter":
         scenes = load_json_arg(args.scenes)
         chunks = []
@@ -1514,6 +1584,7 @@ def main():
             )
 
         stored = asyncio.run(adapter.store_chunks(chunks))
+        adapter.touch_consistency_meta(source="rag_adapter.index-chapter")
         skipped = len(chunks) - stored
         result = {"stored": stored, "skipped": skipped, "total": len(chunks)}
         if skipped > 0:

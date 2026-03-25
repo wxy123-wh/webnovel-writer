@@ -32,6 +32,16 @@ from .observability import safe_append_perf_timing, safe_log_tool_call
 
 logger = logging.getLogger(__name__)
 
+CONSISTENCY_META_VERSION = "f03-v1"
+
+
+def _safe_int(raw: Any, default: int = 0) -> int:
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return int(default)
+
+
 try:
     # 当 scripts 目录在 sys.path 中（常见：从 scripts/ 运行）
     from security_utils import atomic_write_json, read_json_safe
@@ -126,6 +136,7 @@ class StateManager:
         self._pending_progress_chapter: Optional[int] = None
         self._pending_progress_words_delta: int = 0
         self._pending_chapter_meta: Dict[str, Any] = {}
+        self._pending_consistency_meta: Optional[Dict[str, Any]] = None
 
         # v5.1 引入: 缓存待同步到 SQLite 的数据
         self._pending_sqlite_data: Dict[str, Any] = {
@@ -195,6 +206,16 @@ class StateManager:
         progress.setdefault("total_words", 0)
         progress.setdefault("last_updated", self._now_progress_timestamp())
 
+        consistency_meta = state.get("consistency_meta")
+        if not isinstance(consistency_meta, dict):
+            consistency_meta = {}
+            state["consistency_meta"] = consistency_meta
+        consistency_meta.setdefault("version", CONSISTENCY_META_VERSION)
+        consistency_meta.setdefault("updated_at", progress.get("last_updated", ""))
+        consistency_meta.setdefault("source", "state_manager")
+        consistency_meta.setdefault("state_current_chapter", _safe_int(progress.get("current_chapter"), 0))
+        consistency_meta.setdefault("state_last_updated", str(progress.get("last_updated") or ""))
+
         return state
 
     def _load_state(self):
@@ -227,6 +248,7 @@ class StateManager:
                 self._pending_chapter_meta,
                 self._pending_progress_chapter is not None,
                 self._pending_progress_words_delta != 0,
+                self._pending_consistency_meta is not None,
             ]
         )
         if not has_pending:
@@ -338,6 +360,26 @@ class StateManager:
                         disk_state["chapter_meta"] = chapter_meta
                     chapter_meta.update(self._pending_chapter_meta)
 
+                # 一致性元数据（F03）
+                consistency_meta = disk_state.get("consistency_meta")
+                if not isinstance(consistency_meta, dict):
+                    consistency_meta = {}
+                    disk_state["consistency_meta"] = consistency_meta
+                if self._pending_consistency_meta:
+                    consistency_meta.update(self._pending_consistency_meta)
+
+                progress = disk_state.get("progress", {})
+                if not isinstance(progress, dict):
+                    progress = {}
+                    disk_state["progress"] = progress
+
+                state_last_updated = str(progress.get("last_updated") or self._now_progress_timestamp())
+                consistency_meta["version"] = str(consistency_meta.get("version") or CONSISTENCY_META_VERSION)
+                consistency_meta["updated_at"] = self._now_progress_timestamp()
+                consistency_meta["source"] = str(consistency_meta.get("source") or "state_manager.save_state")
+                consistency_meta["state_current_chapter"] = _safe_int(progress.get("current_chapter"), 0)
+                consistency_meta["state_last_updated"] = state_last_updated
+
                 # 原子写入（锁已持有，不再二次加锁）
                 atomic_write_json(self.config.state_file, disk_state, use_lock=False, backup=True)
 
@@ -354,6 +396,7 @@ class StateManager:
                 self._pending_chapter_meta.clear()
                 self._pending_progress_chapter = None
                 self._pending_progress_words_delta = 0
+                self._pending_consistency_meta = None
 
                 # SQLite 侧 pending：成功后清空，失败则恢复快照（避免静默丢数据）
                 if sqlite_sync_ok:
@@ -614,6 +657,67 @@ class StateManager:
             self._pending_progress_chapter = max(self._pending_progress_chapter, chapter)
         if words > 0:
             self._pending_progress_words_delta += int(words)
+
+    def touch_consistency_meta(
+        self,
+        *,
+        source: str = "state_manager",
+        version: str = CONSISTENCY_META_VERSION,
+        state_chapter: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        progress = self._state.setdefault("progress", {})
+        if not isinstance(progress, dict):
+            progress = {}
+            self._state["progress"] = progress
+
+        chapter = _safe_int(state_chapter, _safe_int(progress.get("current_chapter"), 0))
+        state_last_updated = str(progress.get("last_updated") or self._now_progress_timestamp())
+        now = self._now_progress_timestamp()
+        payload = {
+            "version": str(version or CONSISTENCY_META_VERSION),
+            "updated_at": now,
+            "source": str(source or "state_manager"),
+            "state_current_chapter": chapter,
+            "state_last_updated": state_last_updated,
+        }
+
+        consistency_meta = self._state.setdefault("consistency_meta", {})
+        if not isinstance(consistency_meta, dict):
+            consistency_meta = {}
+            self._state["consistency_meta"] = consistency_meta
+        consistency_meta.update(payload)
+        self._pending_consistency_meta = dict(payload)
+        return dict(consistency_meta)
+
+    def get_consistency_meta(self) -> Dict[str, Any]:
+        progress = self._state.get("progress", {})
+        if not isinstance(progress, dict):
+            progress = {}
+
+        consistency_meta = self._state.get("consistency_meta", {})
+        if not isinstance(consistency_meta, dict):
+            consistency_meta = {}
+
+        version = str(consistency_meta.get("version") or CONSISTENCY_META_VERSION)
+        updated_at = str(consistency_meta.get("updated_at") or "")
+        source = str(consistency_meta.get("source") or "")
+        state_chapter = _safe_int(
+            consistency_meta.get("state_current_chapter"),
+            _safe_int(progress.get("current_chapter"), 0),
+        )
+        state_last_updated = str(
+            consistency_meta.get("state_last_updated")
+            or progress.get("last_updated")
+            or ""
+        )
+        return {
+            "version": version,
+            "updated_at": updated_at,
+            "source": source,
+            "state_current_chapter": state_chapter,
+            "state_last_updated": state_last_updated,
+            "state_file": str(self.config.state_file),
+        }
 
     # ==================== 实体管理 (v5.1 SQLite-first) ====================
 
@@ -1249,6 +1353,12 @@ def main():
     process_parser.add_argument("--chapter", type=int, required=True, help="章节号")
     process_parser.add_argument("--data", required=True, help="JSON 格式的处理结果")
 
+    consistency_parser = subparsers.add_parser("consistency-meta")
+    consistency_parser.add_argument("--touch", action="store_true", help="写入一致性元数据")
+    consistency_parser.add_argument("--source", default="state_manager.cli")
+    consistency_parser.add_argument("--version", default=CONSISTENCY_META_VERSION)
+    consistency_parser.add_argument("--state-chapter", type=int, default=None)
+
     argv = normalize_global_project_root(sys.argv[1:])
     args = parser.parse_args(argv)
     command_started_at = time.perf_counter()
@@ -1315,6 +1425,18 @@ def main():
 
         payload = [{"id": eid, **e} for eid, e in entities.items()]
         emit_success(payload, message="entities")
+
+    elif args.command == "consistency-meta":
+        if args.touch:
+            meta = manager.touch_consistency_meta(
+                source=args.source,
+                version=args.version,
+                state_chapter=args.state_chapter,
+            )
+            manager.save_state()
+            emit_success(meta, message="consistency_meta_touched", chapter=meta.get("state_current_chapter"))
+        else:
+            emit_success(manager.get_consistency_meta(), message="consistency_meta")
 
     elif args.command == "process-chapter":
         data = load_json_arg(args.data)

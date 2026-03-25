@@ -26,8 +26,10 @@ import argparse
 import importlib
 import json
 import os
+import sqlite3
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +49,33 @@ from project_locator import (
 USE_EXIT_OK = 0
 USE_EXIT_INVALID_PROJECT_ROOT = 2
 USE_EXIT_REGISTRY_FAILED = 3
+USE_EXIT_UPDATE_STATE_FAILED = 10
+USE_EXIT_UPDATE_STATE_SYNC_FAILED = 11
+USE_EXIT_CONSISTENCY_DRIFT = 12
+USE_EXIT_CONSISTENCY_RUNTIME_ERROR = 13
+
+CONSISTENCY_META_VERSION = "f03-v1"
+CONSISTENCY_META_KEYS = {
+    "state_current_chapter",
+    "state_last_updated",
+    "sync_source",
+    "sync_version",
+}
+PASSTHROUGH_TOOLS = {
+    "index",
+    "state",
+    "rag",
+    "style",
+    "entity",
+    "context",
+    "migrate",
+    "workflow",
+    "status",
+    "update-state",
+    "backup",
+    "archive",
+    "init",
+}
 
 
 def _normalize_path(raw: str | Path) -> Path:
@@ -356,6 +385,436 @@ def _strip_project_root_args(argv: list[str]) -> list[str]:
     return out
 
 
+def _safe_int(raw: object, default: int = 0) -> int:
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _sqlite_table_exists(cursor: sqlite3.Cursor, table_name: str) -> bool:
+    cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    )
+    return cursor.fetchone() is not None
+
+
+def _split_update_state_args(argv: list[str]) -> tuple[list[str], bool]:
+    forwarded: list[str] = []
+    skip_index_sync = False
+    for token in argv:
+        if token == "--skip-index-sync":
+            skip_index_sync = True
+            continue
+        if token.startswith("--skip-index-sync="):
+            raw = token.split("=", 1)[1].strip().lower()
+            skip_index_sync = raw not in {"0", "false", "no", "off"}
+            continue
+        forwarded.append(token)
+    return forwarded, skip_index_sync
+
+
+def _inject_passthrough_separator(argv: list[str]) -> list[str]:
+    """
+    Ensure pass-through subcommands keep downstream flags intact.
+
+    `argparse` subparsers may reject unknown options (e.g. `--progress`) before
+    they reach `nargs=REMAINDER`. We inject `--` right after pass-through tools
+    so remaining tokens are forwarded verbatim.
+    """
+    out = list(argv)
+    for i, token in enumerate(out):
+        if token not in PASSTHROUGH_TOOLS:
+            continue
+        if i + 1 < len(out) and out[i + 1] == "--":
+            return out
+        out.insert(i + 1, "--")
+        return out
+    return out
+
+
+def _load_state_sync_snapshot(project_root: Path) -> dict[str, object]:
+    state_file = project_root / ".webnovel" / "state.json"
+    if not state_file.is_file():
+        raise FileNotFoundError(f"missing state.json: {state_file}")
+
+    try:
+        payload = json.loads(state_file.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        raise RuntimeError(f"invalid state.json: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise RuntimeError("state.json root must be object")
+
+    progress = payload.get("progress")
+    if not isinstance(progress, dict):
+        progress = {}
+
+    consistency_meta = payload.get("consistency_meta")
+    if not isinstance(consistency_meta, dict):
+        consistency_meta = {}
+
+    chapter = _safe_int(progress.get("current_chapter"), 0)
+    last_updated = str(
+        progress.get("last_updated")
+        or consistency_meta.get("state_last_updated")
+        or consistency_meta.get("updated_at")
+        or ""
+    )
+    version = str(consistency_meta.get("version") or CONSISTENCY_META_VERSION)
+
+    return {
+        "state_file": str(state_file),
+        "state_current_chapter": chapter,
+        "state_last_updated": last_updated,
+        "consistency_meta": {
+            "version": version,
+            "updated_at": str(consistency_meta.get("updated_at") or ""),
+            "source": str(consistency_meta.get("source") or ""),
+        },
+    }
+
+
+def _ensure_index_consistency_meta_table(cursor: sqlite3.Cursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS consistency_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
+def _upsert_index_consistency_meta(
+    cursor: sqlite3.Cursor,
+    *,
+    key: str,
+    value: str,
+    updated_at: str,
+) -> None:
+    cursor.execute(
+        """
+        INSERT INTO consistency_meta (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        """,
+        (key, value, updated_at),
+    )
+
+
+def _sync_index_after_update_state(project_root: Path) -> dict[str, object]:
+    snapshot = _load_state_sync_snapshot(project_root)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    state_chapter = _safe_int(snapshot.get("state_current_chapter"), 0)
+    state_last_updated = str(snapshot.get("state_last_updated") or "")
+    version = str(
+        (snapshot.get("consistency_meta") or {}).get("version")
+        or CONSISTENCY_META_VERSION
+    )
+
+    index_db = project_root / ".webnovel" / "index.db"
+    index_db.parent.mkdir(parents=True, exist_ok=True)
+
+    with sqlite3.connect(str(index_db)) as conn:
+        cursor = conn.cursor()
+        _ensure_index_consistency_meta_table(cursor)
+        meta_payload = {
+            "state_current_chapter": str(state_chapter),
+            "state_last_updated": state_last_updated,
+            "sync_source": "webnovel.update-state",
+            "sync_version": version,
+        }
+        for key, value in meta_payload.items():
+            _upsert_index_consistency_meta(
+                cursor,
+                key=key,
+                value=str(value),
+                updated_at=now,
+            )
+        conn.commit()
+
+    return {
+        "index_db": str(index_db),
+        "state_current_chapter": state_chapter,
+        "state_last_updated": state_last_updated,
+        "sync_source": "webnovel.update-state",
+        "sync_version": version,
+        "sync_updated_at": now,
+    }
+
+
+def _read_index_consistency_snapshot(project_root: Path) -> dict[str, object]:
+    index_db = project_root / ".webnovel" / "index.db"
+    snapshot: dict[str, object] = {
+        "index_db": str(index_db),
+        "exists": index_db.is_file(),
+        "max_chapter": 0,
+        "consistency_meta": {},
+        "sync_updated_at": "",
+    }
+    if not index_db.is_file():
+        snapshot["error"] = "index_db_missing"
+        return snapshot
+
+    with sqlite3.connect(str(index_db)) as conn:
+        cursor = conn.cursor()
+        if _sqlite_table_exists(cursor, "chapters"):
+            cursor.execute("SELECT MAX(chapter) FROM chapters")
+            row = cursor.fetchone()
+            snapshot["max_chapter"] = _safe_int(row[0] if row else 0, 0)
+
+        if _sqlite_table_exists(cursor, "consistency_meta"):
+            cursor.execute("SELECT key, value, updated_at FROM consistency_meta")
+            rows = cursor.fetchall()
+            meta: dict[str, str] = {}
+            latest_updated_at = ""
+            for key, value, updated_at in rows:
+                if key in CONSISTENCY_META_KEYS:
+                    meta[str(key)] = str(value or "")
+                if updated_at:
+                    latest_updated_at = max(latest_updated_at, str(updated_at))
+            snapshot["consistency_meta"] = meta
+            snapshot["sync_updated_at"] = latest_updated_at
+    return snapshot
+
+
+def _read_rag_consistency_snapshot(project_root: Path) -> dict[str, object]:
+    vectors_db = project_root / ".webnovel" / "vectors.db"
+    snapshot: dict[str, object] = {
+        "vectors_db": str(vectors_db),
+        "exists": vectors_db.is_file(),
+        "max_chapter": 0,
+        "schema_version": "",
+        "consistency_version": "",
+        "consistency_updated_at": "",
+    }
+    if not vectors_db.is_file():
+        snapshot["error"] = "vectors_db_missing"
+        return snapshot
+
+    with sqlite3.connect(str(vectors_db)) as conn:
+        cursor = conn.cursor()
+        if _sqlite_table_exists(cursor, "vectors"):
+            cursor.execute("SELECT MAX(chapter) FROM vectors")
+            row = cursor.fetchone()
+            snapshot["max_chapter"] = _safe_int(row[0] if row else 0, 0)
+
+        if _sqlite_table_exists(cursor, "rag_schema_meta"):
+            cursor.execute("SELECT key, value, updated_at FROM rag_schema_meta")
+            for key, value, updated_at in cursor.fetchall():
+                key = str(key or "")
+                if key == "schema_version":
+                    snapshot["schema_version"] = str(value or "")
+                elif key == "consistency_version":
+                    snapshot["consistency_version"] = str(value or "")
+                elif key == "consistency_updated_at":
+                    snapshot["consistency_updated_at"] = str(value or "")
+                if not snapshot.get("consistency_updated_at") and updated_at and key == "schema_version":
+                    snapshot["consistency_updated_at"] = str(updated_at)
+    return snapshot
+
+
+def _append_issue(
+    report: dict[str, object],
+    *,
+    code: str,
+    message: str,
+    suggestion: str,
+    severity: str = "warn",
+) -> None:
+    issues = report.setdefault("issues", [])
+    suggestions = report.setdefault("suggestions", [])
+    if isinstance(issues, list):
+        issues.append(
+            {
+                "code": code,
+                "severity": severity,
+                "message": message,
+                "suggestion": suggestion,
+            }
+        )
+    if suggestion and isinstance(suggestions, list) and suggestion not in suggestions:
+        suggestions.append(suggestion)
+
+
+def _build_consistency_report(project_root: Path) -> dict[str, object]:
+    report: dict[str, object] = {
+        "status": "ok",
+        "version": CONSISTENCY_META_VERSION,
+        "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "project_root": str(project_root),
+        "issues": [],
+        "suggestions": [],
+    }
+
+    state_snapshot = _load_state_sync_snapshot(project_root)
+    index_snapshot = _read_index_consistency_snapshot(project_root)
+    rag_snapshot = _read_rag_consistency_snapshot(project_root)
+
+    report["state"] = state_snapshot
+    report["index"] = index_snapshot
+    report["rag"] = rag_snapshot
+
+    state_chapter = _safe_int(state_snapshot.get("state_current_chapter"), 0)
+    index_chapter = _safe_int(index_snapshot.get("max_chapter"), 0)
+    rag_chapter = _safe_int(rag_snapshot.get("max_chapter"), 0)
+
+    if not bool(index_snapshot.get("exists")):
+        _append_issue(
+            report,
+            code="INDEX_DB_MISSING",
+            message="index.db 不存在，无法确认索引水位。",
+            suggestion="运行 `webnovel index stats --project-root <project_root>` 以初始化 index.db。",
+        )
+
+    index_meta = index_snapshot.get("consistency_meta") or {}
+    if isinstance(index_meta, dict):
+        synced_state_chapter = _safe_int(index_meta.get("state_current_chapter"), -1)
+        if synced_state_chapter >= 0 and state_chapter > synced_state_chapter:
+            _append_issue(
+                report,
+                code="INDEX_SYNC_STALE",
+                message=f"state 章节={state_chapter}，但索引同步水位仅={synced_state_chapter}。",
+                suggestion="重新执行 `webnovel update-state ...`（不要带 `--skip-index-sync`）。",
+            )
+        if synced_state_chapter < 0:
+            _append_issue(
+                report,
+                code="INDEX_SYNC_META_MISSING",
+                message="index.db 缺少 state 同步元数据。",
+                suggestion="执行一次 `webnovel update-state ...` 以写入同步元数据。",
+            )
+
+    if state_chapter > index_chapter:
+        _append_issue(
+            report,
+            code="INDEX_DATA_BEHIND",
+            message=f"state 当前章节={state_chapter}，index 仅到章节={index_chapter}。",
+            suggestion="补齐缺失章节的数据入库流程（`webnovel state process-chapter` / `webnovel index process-chapter`）。",
+        )
+
+    if bool(rag_snapshot.get("exists")):
+        if index_chapter > rag_chapter:
+            _append_issue(
+                report,
+                code="RAG_BEHIND_INDEX",
+                message=f"index 章节水位={index_chapter}，rag 章节水位={rag_chapter}。",
+                suggestion="对缺失章节执行 `webnovel rag index-chapter` 进行向量补索引。",
+            )
+    else:
+        _append_issue(
+            report,
+            code="RAG_DB_MISSING",
+            message="vectors.db 不存在，RAG 尚未初始化或未完成索引。",
+            suggestion="运行 `webnovel rag index-chapter --chapter <n> --scenes <json>` 初始化 RAG。",
+        )
+
+    issues = report.get("issues") or []
+    if isinstance(issues, list) and issues:
+        report["status"] = "drift"
+    return report
+
+
+def cmd_consistency_check(args: argparse.Namespace) -> int:
+    try:
+        project_root = _resolve_root(args.project_root)
+    except Exception as exc:
+        print(f"ERROR project_root (consistency-check): {exc}", file=sys.stderr)
+        return USE_EXIT_CONSISTENCY_RUNTIME_ERROR
+
+    try:
+        report = _build_consistency_report(project_root)
+    except Exception as exc:
+        print(f"ERROR consistency-check: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return USE_EXIT_CONSISTENCY_RUNTIME_ERROR
+
+    if args.format == "json":
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(f"status: {report['status']}")
+        print(f"version: {report['version']}")
+        print(f"checked_at: {report['checked_at']}")
+        print(f"project_root: {report['project_root']}")
+
+        state = report.get("state", {})
+        index = report.get("index", {})
+        rag = report.get("rag", {})
+        if isinstance(state, dict):
+            print(
+                "state: "
+                f"chapter={_safe_int(state.get('state_current_chapter'), 0)}, "
+                f"last_updated={state.get('state_last_updated', '')}"
+            )
+        if isinstance(index, dict):
+            print(
+                "index: "
+                f"exists={bool(index.get('exists'))}, "
+                f"max_chapter={_safe_int(index.get('max_chapter'), 0)}, "
+                f"sync_updated_at={index.get('sync_updated_at', '')}"
+            )
+        if isinstance(rag, dict):
+            print(
+                "rag: "
+                f"exists={bool(rag.get('exists'))}, "
+                f"max_chapter={_safe_int(rag.get('max_chapter'), 0)}, "
+                f"schema_version={rag.get('schema_version', '')}"
+            )
+
+        issues = report.get("issues", [])
+        if isinstance(issues, list) and issues:
+            print("issues:")
+            for item in issues:
+                if not isinstance(item, dict):
+                    continue
+                print(f"- [{item.get('severity', 'warn')}] {item.get('code', '')}: {item.get('message', '')}")
+                suggestion = str(item.get("suggestion") or "")
+                if suggestion:
+                    print(f"  action: {suggestion}")
+        else:
+            print("issues: none")
+
+    if report.get("status") == "ok":
+        return USE_EXIT_OK
+    return USE_EXIT_CONSISTENCY_DRIFT
+
+
+def _run_update_state_with_sync(project_root: Path, forward_args: list[str], raw_args: list[str]) -> int:
+    update_args, skip_index_sync = _split_update_state_args(raw_args)
+    script_code = _run_script("update_state.py", [*forward_args, *update_args])
+    if script_code != 0:
+        print(
+            f"update-state failed: script_exit={script_code}",
+            file=sys.stderr,
+        )
+        return USE_EXIT_UPDATE_STATE_FAILED
+
+    if skip_index_sync:
+        print("index sync: (skipped: reason=skip_index_sync_flag; action=remove --skip-index-sync)")
+        return USE_EXIT_OK
+
+    try:
+        sync_result = _sync_index_after_update_state(project_root)
+    except Exception as exc:
+        print(
+            f"index sync failed: reason={type(exc).__name__}; detail={exc}",
+            file=sys.stderr,
+        )
+        return USE_EXIT_UPDATE_STATE_SYNC_FAILED
+
+    print(
+        "index sync: "
+        f"ok (chapter={sync_result['state_current_chapter']}; "
+        f"updated_at={sync_result['sync_updated_at']}; "
+        f"version={sync_result['sync_version']})"
+    )
+    return USE_EXIT_OK
+
+
 def _run_data_module(module: str, argv: list[str]) -> int:
     """
     Import `data_modules.<module>` and call its main(), while isolating sys.argv.
@@ -652,6 +1111,10 @@ def main() -> None:
     )
     p_dashboard.set_defaults(func=cmd_dashboard)
 
+    p_consistency = sub.add_parser("consistency-check", help="检查 state/index/rag 一致性并给出诊断建议")
+    p_consistency.add_argument("--format", choices=["text", "json"], default="text", help="输出格式")
+    p_consistency.set_defaults(func=cmd_consistency_check)
+
     # Pass-through to data modules
     p_index = sub.add_parser("index", help="转发到 index_manager")
     p_index.add_argument("args", nargs=argparse.REMAINDER)
@@ -714,6 +1177,7 @@ def main() -> None:
     from .cli_args import normalize_global_project_root
 
     argv = normalize_global_project_root(sys.argv[1:])
+    argv = _inject_passthrough_separator(argv)
     args = parser.parse_args(argv)
 
     # where/use 直接执行
@@ -782,7 +1246,7 @@ def main() -> None:
     if tool == "status":
         raise SystemExit(_run_script("status_reporter.py", [*forward_args, *rest]))
     if tool == "update-state":
-        raise SystemExit(_run_script("update_state.py", [*forward_args, *rest]))
+        raise SystemExit(_run_update_state_with_sync(project_root, forward_args, rest))
     if tool == "backup":
         raise SystemExit(_run_script("backup_manager.py", [*forward_args, *rest]))
     if tool == "archive":

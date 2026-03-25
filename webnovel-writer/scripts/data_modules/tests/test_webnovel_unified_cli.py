@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -401,3 +402,231 @@ def test_quality_trend_report_writes_to_book_root_when_input_is_workspace_root(t
     assert output_path.is_file()
     assert (book_root / ".webnovel" / "index.db").is_file()
     assert not (workspace_root / ".webnovel" / "index.db").exists()
+
+
+def test_update_state_runs_index_sync_hook_after_success(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+    (project_root / ".webnovel" / "state.json").write_text(
+        json.dumps(
+            {
+                "progress": {"current_chapter": 12, "last_updated": "2026-03-26 12:00:00"},
+                "consistency_meta": {"version": "f03-v1"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    called = {"script": None, "sync": None}
+
+    def _fake_run_script(script_name, argv):
+        called["script"] = (script_name, list(argv))
+        return 0
+
+    def _fake_sync(project_root_arg):
+        called["sync"] = str(project_root_arg)
+        return {
+            "state_current_chapter": 12,
+            "sync_updated_at": "2026-03-26 12:00:01",
+            "sync_version": "f03-v1",
+        }
+
+    monkeypatch.setattr(module, "_run_script", _fake_run_script)
+    monkeypatch.setattr(module, "_sync_index_after_update_state", _fake_sync)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "update-state",
+            "--progress",
+            "12",
+            "20000",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert int(exc.value.code or 0) == 0
+    assert called["script"] is not None
+    assert called["script"][0] == "update_state.py"
+    assert called["sync"] == str(project_root)
+    assert "index sync: ok" in captured.out
+
+
+def test_update_state_returns_sync_failed_exit_code_when_hook_fails(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+    (project_root / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")
+
+    def _fake_run_script(_script_name, _argv):
+        return 0
+
+    def _fail_sync(_project_root_arg):
+        raise RuntimeError("index locked")
+
+    monkeypatch.setattr(module, "_run_script", _fake_run_script)
+    monkeypatch.setattr(module, "_sync_index_after_update_state", _fail_sync)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "update-state",
+            "--progress",
+            "13",
+            "23000",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert int(exc.value.code or 0) == module.USE_EXIT_UPDATE_STATE_SYNC_FAILED
+    assert "index sync failed" in captured.err
+
+
+def test_update_state_skip_flag_bypasses_index_sync_hook(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+    (project_root / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")
+
+    called = {"script": None}
+
+    def _fake_run_script(script_name, argv):
+        called["script"] = (script_name, list(argv))
+        return 0
+
+    def _unexpected_sync(_project_root_arg):
+        raise AssertionError("skip-index-sync 时不应执行索引同步钩子")
+
+    monkeypatch.setattr(module, "_run_script", _fake_run_script)
+    monkeypatch.setattr(module, "_sync_index_after_update_state", _unexpected_sync)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "update-state",
+            "--skip-index-sync",
+            "--progress",
+            "14",
+            "26000",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert int(exc.value.code or 0) == 0
+    assert called["script"] is not None
+    assert "--skip-index-sync" not in called["script"][1]
+    assert "index sync: (skipped: reason=skip_index_sync_flag" in captured.out
+
+
+def test_consistency_check_reports_drift_with_suggestions(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    webnovel_dir = project_root / ".webnovel"
+    webnovel_dir.mkdir(parents=True, exist_ok=True)
+    (webnovel_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "progress": {
+                    "current_chapter": 15,
+                    "total_words": 45000,
+                    "last_updated": "2026-03-26 15:00:00",
+                },
+                "consistency_meta": {
+                    "version": "f03-v1",
+                    "updated_at": "2026-03-26 15:00:00",
+                    "source": "update_state.py",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    index_db = webnovel_dir / "index.db"
+    with sqlite3.connect(str(index_db)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE chapters (chapter INTEGER PRIMARY KEY)")
+        cursor.execute("INSERT INTO chapters (chapter) VALUES (10)")
+        cursor.execute(
+            """
+            CREATE TABLE consistency_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            "INSERT INTO consistency_meta (key, value, updated_at) VALUES (?, ?, ?)",
+            ("state_current_chapter", "10", "2026-03-26 15:00:01"),
+        )
+        conn.commit()
+
+    vectors_db = webnovel_dir / "vectors.db"
+    with sqlite3.connect(str(vectors_db)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE vectors (chunk_id TEXT PRIMARY KEY, chapter INTEGER)")
+        cursor.execute("INSERT INTO vectors (chunk_id, chapter) VALUES (?, ?)", ("ch0010_s1", 10))
+        cursor.execute(
+            """
+            CREATE TABLE rag_schema_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            "INSERT INTO rag_schema_meta (key, value, updated_at) VALUES (?, ?, ?)",
+            ("schema_version", "2", "2026-03-26 15:00:02"),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "consistency-check",
+            "--format",
+            "json",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    issue_codes = {item.get("code") for item in payload.get("issues", [])}
+
+    assert int(exc.value.code or 0) == module.USE_EXIT_CONSISTENCY_DRIFT
+    assert payload["status"] == "drift"
+    assert "INDEX_SYNC_STALE" in issue_codes
+    assert "INDEX_DATA_BEHIND" in issue_codes

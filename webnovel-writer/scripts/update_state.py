@@ -64,6 +64,8 @@ from data_modules.state_validator import (
     normalize_state_runtime_sections,
 )
 
+CONSISTENCY_META_VERSION = "f03-v1"
+
 # Windows 编码兼容性修复
 if sys.platform == "win32":
     enable_windows_utf8_stdio()
@@ -308,6 +310,29 @@ class StateUpdater:
         self.state["progress"]["total_words"] = total_words
         self.state["progress"]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"📝 更新进度: 第{current_chapter}章, 总字数: {total_words}")
+
+    def touch_consistency_meta(self, source: str = "update_state.py"):
+        """刷新一致性元数据（F03）。"""
+        progress = self.state.setdefault("progress", {})
+        if not isinstance(progress, dict):
+            progress = {}
+            self.state["progress"] = progress
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        progress.setdefault("current_chapter", 0)
+        progress.setdefault("total_words", 0)
+        progress["last_updated"] = str(progress.get("last_updated") or now)
+
+        consistency_meta = self.state.setdefault("consistency_meta", {})
+        if not isinstance(consistency_meta, dict):
+            consistency_meta = {}
+            self.state["consistency_meta"] = consistency_meta
+
+        consistency_meta["version"] = CONSISTENCY_META_VERSION
+        consistency_meta["updated_at"] = now
+        consistency_meta["source"] = str(source or "update_state.py")
+        consistency_meta["state_current_chapter"] = int(progress.get("current_chapter", 0) or 0)
+        consistency_meta["state_last_updated"] = str(progress.get("last_updated") or now)
 
     def mark_volume_planned(self, volume: int, chapters_range: str):
         """标记卷已规划"""
@@ -609,6 +634,8 @@ def main():
         if args.strand_dominant:
             strand, chapter = args.strand_dominant
             updater.update_strand_tracker(strand, int(chapter))
+
+        updater.touch_consistency_meta(source="update_state.py")
 
         # 保存更新
         if not updater.save():

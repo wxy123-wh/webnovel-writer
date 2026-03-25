@@ -52,6 +52,15 @@ from .index_observability_mixin import IndexObservabilityMixin
 from .observability import safe_append_perf_timing, safe_log_tool_call
 
 
+CONSISTENCY_META_VERSION = "f03-v1"
+CONSISTENCY_META_KEYS = {
+    "state_current_chapter",
+    "state_last_updated",
+    "sync_source",
+    "sync_version",
+}
+
+
 @dataclass
 class ChapterMeta:
     """章节元数据"""
@@ -617,6 +626,18 @@ class IndexManager(IndexChapterMixin, IndexEntityMixin, IndexDebtMixin, IndexRea
                 "CREATE INDEX IF NOT EXISTS idx_checklist_score_value ON writing_checklist_scores(score)"
             )
 
+            # 一致性元数据（F03）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS consistency_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_consistency_meta_updated ON consistency_meta(updated_at)"
+            )
+
             conn.commit()
 
     @contextmanager
@@ -628,6 +649,94 @@ class IndexManager(IndexChapterMixin, IndexEntityMixin, IndexDebtMixin, IndexRea
             yield conn
         finally:
             conn.close()
+
+    def _table_exists(self, cursor: sqlite3.Cursor, table_name: str) -> bool:
+        cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        )
+        return cursor.fetchone() is not None
+
+    def _upsert_consistency_meta(
+        self,
+        cursor: sqlite3.Cursor,
+        *,
+        key: str,
+        value: str,
+        updated_at: str,
+    ) -> None:
+        cursor.execute(
+            """
+            INSERT INTO consistency_meta (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            """,
+            (key, value, updated_at),
+        )
+
+    def touch_consistency_meta(
+        self,
+        *,
+        state_chapter: Optional[int] = None,
+        state_last_updated: str = "",
+        source: str = "index_manager",
+        version: str = CONSISTENCY_META_VERSION,
+    ) -> Dict[str, Any]:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        payload = {
+            "state_current_chapter": str(int(state_chapter or 0)),
+            "state_last_updated": str(state_last_updated or ""),
+            "sync_source": str(source or "index_manager"),
+            "sync_version": str(version or CONSISTENCY_META_VERSION),
+        }
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            for key, value in payload.items():
+                self._upsert_consistency_meta(
+                    cursor,
+                    key=key,
+                    value=value,
+                    updated_at=now,
+                )
+            conn.commit()
+        return self.get_consistency_meta()
+
+    def get_consistency_meta(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "version": CONSISTENCY_META_VERSION,
+            "updated_at": "",
+            "state_current_chapter": 0,
+            "state_last_updated": "",
+            "sync_source": "",
+            "sync_version": "",
+            "index_db": str(self.config.index_db),
+        }
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            if not self._table_exists(cursor, "consistency_meta"):
+                return result
+
+            cursor.execute("SELECT key, value, updated_at FROM consistency_meta")
+            for row in cursor.fetchall():
+                key = str(row[0] or "")
+                value = str(row[1] or "")
+                updated_at = str(row[2] or "")
+                if key in CONSISTENCY_META_KEYS:
+                    result[key] = value
+                if updated_at:
+                    result["updated_at"] = max(str(result.get("updated_at") or ""), updated_at)
+
+        try:
+            result["state_current_chapter"] = int(result.get("state_current_chapter") or 0)
+        except (TypeError, ValueError):
+            result["state_current_chapter"] = 0
+
+        sync_version = str(result.get("sync_version") or "")
+        if sync_version:
+            result["version"] = sync_version
+        return result
 
     # ==================== 章节操作 ====================
 
@@ -647,6 +756,13 @@ def main():
 
     # 获取统计
     subparsers.add_parser("stats")
+
+    consistency_parser = subparsers.add_parser("consistency-meta")
+    consistency_parser.add_argument("--touch", action="store_true", help="写入一致性元数据")
+    consistency_parser.add_argument("--state-chapter", type=int, default=0)
+    consistency_parser.add_argument("--state-last-updated", default="")
+    consistency_parser.add_argument("--source", default="index_manager.cli")
+    consistency_parser.add_argument("--version", default=CONSISTENCY_META_VERSION)
 
     # 查询章节
     chapter_parser = subparsers.add_parser("get-chapter")
@@ -920,6 +1036,18 @@ def main():
 
     if args.command == "stats":
         emit_success(manager.get_stats(), message="stats")
+
+    elif args.command == "consistency-meta":
+        if args.touch:
+            meta = manager.touch_consistency_meta(
+                state_chapter=args.state_chapter,
+                state_last_updated=args.state_last_updated,
+                source=args.source,
+                version=args.version,
+            )
+            emit_success(meta, message="consistency_meta_touched", chapter=args.state_chapter)
+        else:
+            emit_success(manager.get_consistency_meta(), message="consistency_meta")
 
     elif args.command == "get-chapter":
         chapter = manager.get_chapter(args.chapter)
