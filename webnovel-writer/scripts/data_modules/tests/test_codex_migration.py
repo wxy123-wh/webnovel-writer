@@ -2,10 +2,25 @@
 # -*- coding: utf-8 -*-
 
 import json
+import shutil
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
+
+TEST_TMP_ROOT = Path(__file__).resolve().parent / ".tmp" / "codex-migration"
+
+
+@pytest.fixture
+def tmp_path():
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    case_root = (TEST_TMP_ROOT / f"case-{uuid4().hex[:8]}").resolve()
+    case_root.mkdir(parents=True, exist_ok=False)
+    try:
+        yield case_root
+    finally:
+        shutil.rmtree(case_root, ignore_errors=True)
 
 
 def _ensure_scripts_on_path() -> None:
