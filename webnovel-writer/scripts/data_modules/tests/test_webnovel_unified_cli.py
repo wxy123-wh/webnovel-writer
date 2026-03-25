@@ -93,6 +93,83 @@ def test_extract_context_forwards_with_resolved_project_root(monkeypatch, tmp_pa
     ]
 
 
+def test_extract_context_accepts_marker_root_when_state_missing(monkeypatch, tmp_path):
+    module = _load_webnovel_module()
+
+    marker_root = (tmp_path / "book").resolve()
+    (marker_root / "正文").mkdir(parents=True, exist_ok=True)
+    called = {}
+
+    def _fake_resolve(_explicit_project_root=None):
+        raise FileNotFoundError("missing .webnovel/state.json")
+
+    def _fake_run_script(script_name, argv):
+        called["script_name"] = script_name
+        called["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(module, "_resolve_root", _fake_resolve)
+    monkeypatch.setattr(module, "_run_script", _fake_run_script)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(marker_root),
+            "extract-context",
+            "--chapter",
+            "7",
+            "--format",
+            "text",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    assert int(exc.value.code or 0) == 0
+    assert called["script_name"] == "extract_chapter_context.py"
+    assert called["argv"][0:2] == ["--project-root", str(marker_root)]
+
+
+def test_extract_context_reports_project_root_error(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    invalid_root = (tmp_path / "workspace").resolve()
+
+    def _fake_resolve_root_for_extract_context(_explicit_project_root=None):
+        raise FileNotFoundError(f"extract-context project_root 不存在: {invalid_root}")
+
+    def _fake_run_script(*_args, **_kwargs):
+        raise AssertionError("project_root 解析失败时不应继续转发子脚本")
+
+    monkeypatch.setattr(module, "_resolve_root_for_extract_context", _fake_resolve_root_for_extract_context)
+    monkeypatch.setattr(module, "_run_script", _fake_run_script)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(invalid_root),
+            "extract-context",
+            "--chapter",
+            "3",
+            "--format",
+            "json",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert int(exc.value.code) == 1
+    assert "ERROR project_root (extract-context):" in captured.err
+    assert "extract-context project_root 不存在" in captured.err
+
+
 def test_migrate_codex_dispatches_to_runtime_migration(monkeypatch, tmp_path, capsys):
     module = _load_webnovel_module()
 

@@ -306,6 +306,37 @@ def _resolve_root(explicit_project_root: Optional[str]) -> Path:
     return resolve_project_root()
 
 
+def _is_extract_context_root(path: Path) -> bool:
+    return any((path / marker).exists() for marker in (".webnovel", "正文", "大纲"))
+
+
+def _resolve_root_for_extract_context(explicit_project_root: Optional[str]) -> Path:
+    """
+    extract-context 允许在 state.json 缺失时降级执行，
+    由子脚本输出结构化警告而非直接中断。
+    """
+    try:
+        return _resolve_root(explicit_project_root)
+    except Exception:
+        pass
+
+    if explicit_project_root:
+        candidate = _normalize_path(explicit_project_root)
+        if not candidate.exists():
+            raise FileNotFoundError(f"extract-context project_root 不存在: {candidate}")
+        if _is_extract_context_root(candidate):
+            return candidate
+        raise FileNotFoundError(
+            "extract-context project_root 无效（需包含 .webnovel/ 或 正文/ 或 大纲/）: "
+            f"{candidate}"
+        )
+
+    cwd = Path.cwd().resolve()
+    if _is_extract_context_root(cwd):
+        return cwd
+    return _resolve_root(explicit_project_root)
+
+
 def _strip_project_root_args(argv: list[str]) -> list[str]:
     """
     下游工具统一由本入口注入 `--project-root`，避免重复传参导致 argparse 报错/歧义。
@@ -662,9 +693,22 @@ def main() -> None:
     p_init = sub.add_parser("init", help="转发到 init_project.py（初始化项目）")
     p_init.add_argument("args", nargs=argparse.REMAINDER)
 
-    p_extract_context = sub.add_parser("extract-context", help="转发到 extract_chapter_context.py")
-    p_extract_context.add_argument("--chapter", type=int, required=True, help="目标章节号")
-    p_extract_context.add_argument("--format", choices=["text", "json"], default="text", help="输出格式")
+    p_extract_context = sub.add_parser(
+        "extract-context",
+        help="提取章节上下文（章节缺失报错，state 缺失给出警告）",
+    )
+    p_extract_context.add_argument(
+        "--chapter",
+        type=int,
+        required=True,
+        help="目标章节号（必须可在正文目录定位到对应章节文件）",
+    )
+    p_extract_context.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="输出格式：text=可读摘要，json=结构化数据",
+    )
 
     # 兼容：允许 `--project-root` 出现在任意位置（减少 agents/skills 拼命令的出错率）
     from .cli_args import normalize_global_project_root
@@ -687,6 +731,22 @@ def main() -> None:
     # init 是创建项目，不应该依赖/注入已存在 project_root
     if tool == "init":
         raise SystemExit(_run_script("init_project.py", rest))
+
+    if tool == "extract-context":
+        try:
+            project_root = _resolve_root_for_extract_context(args.project_root)
+        except Exception as exc:
+            print(f"ERROR project_root (extract-context): {exc}", file=sys.stderr)
+            raise SystemExit(1)
+        return_args = [
+            "--project-root",
+            str(project_root),
+            "--chapter",
+            str(args.chapter),
+            "--format",
+            str(args.format),
+        ]
+        raise SystemExit(_run_script("extract_chapter_context.py", return_args))
 
     # 其余工具：统一解析 project_root 后前置给下游
     project_root = _resolve_root(args.project_root)
@@ -727,10 +787,6 @@ def main() -> None:
         raise SystemExit(_run_script("backup_manager.py", [*forward_args, *rest]))
     if tool == "archive":
         raise SystemExit(_run_script("archive_manager.py", [*forward_args, *rest]))
-    if tool == "extract-context":
-        return_args = [*forward_args, "--chapter", str(args.chapter), "--format", str(args.format)]
-        raise SystemExit(_run_script("extract_chapter_context.py", return_args))
-
     raise SystemExit(2)
 
 

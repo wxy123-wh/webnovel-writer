@@ -55,12 +55,28 @@ _RAG_TRIGGER_KEYWORDS = (
 
 
 def find_project_root(start_path: Path | None = None) -> Path:
-    """解析真实书项目根（包含 `.webnovel/state.json` 的目录）。"""
+    """解析项目根目录；显式路径允许在 state 缺失时降级继续。"""
     from project_locator import resolve_project_root
 
     if start_path is None:
         return resolve_project_root()
-    return resolve_project_root(str(start_path))
+
+    candidate = Path(start_path).expanduser()
+    resolved_candidate = candidate.resolve()
+    marker_exists = resolved_candidate.is_dir() and any(
+        (resolved_candidate / marker).exists()
+        for marker in (".webnovel", "正文", "大纲")
+    )
+
+    try:
+        resolved = resolve_project_root(str(candidate))
+        if marker_exists and resolved != resolved_candidate:
+            return resolved_candidate
+        return resolved
+    except FileNotFoundError:
+        if marker_exists:
+            return resolved_candidate
+        raise
 
 
 def extract_chapter_outline(project_root: Path, chapter_num: int) -> str:
@@ -107,58 +123,196 @@ def extract_chapter_summary(project_root: Path, chapter_num: int) -> str:
     return f"[自动截取前500字]\n{text}..."
 
 
-def extract_state_summary(project_root: Path) -> str:
-    """Extract key fields from `.webnovel/state.json`."""
+def _safe_text(value: Any, default: str = "?") -> str:
+    if isinstance(value, str):
+        text = value.strip()
+        return text or default
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text or default
+
+
+def _extract_location(location: Any) -> str:
+    """兼容 location 为字符串或对象（含嵌套 current/name）。"""
+    if isinstance(location, str):
+        text = location.strip()
+        return text or "?"
+
+    if not isinstance(location, dict):
+        return "?"
+
+    queue: List[Dict[str, Any]] = [location]
+    visited: set[int] = set()
+    while queue:
+        node = queue.pop(0)
+        marker = id(node)
+        if marker in visited:
+            continue
+        visited.add(marker)
+
+        for key in ("current", "name", "display", "value", "location"):
+            value = node.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, dict):
+                queue.append(value)
+
+        for value in node.values():
+            if isinstance(value, dict):
+                queue.append(value)
+
+    return "?"
+
+
+def _load_state_payload(project_root: Path) -> tuple[Dict[str, Any], str]:
     state_file = project_root / ".webnovel" / "state.json"
     if not state_file.exists():
-        return "⚠️ state.json 不存在"
+        return {}, f"⚠️ state.json 缺失: {state_file}"
 
-    state = json.loads(state_file.read_text(encoding="utf-8"))
-    summary_parts: List[str] = []
+    try:
+        raw = json.loads(state_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {}, f"⚠️ state.json 解析失败({exc.__class__.__name__}): {state_file}"
 
-    if "progress" in state:
-        progress = state["progress"]
-        summary_parts.append(
-            f"**进度**: 第{progress.get('current_chapter', '?')}章 / {progress.get('total_words', '?')}字"
+    if not isinstance(raw, dict):
+        return {}, f"⚠️ state.json 根结构异常（需为对象）: {state_file}"
+
+    return raw, ""
+
+
+def extract_state_snapshot(project_root: Path) -> Dict[str, Any]:
+    """抽取状态快照（供 text/json 共用）。"""
+    state, warning = _load_state_payload(project_root)
+
+    progress = state.get("progress") if isinstance(state.get("progress"), dict) else {}
+    protagonist_state = (
+        state.get("protagonist_state")
+        if isinstance(state.get("protagonist_state"), dict)
+        else {}
+    )
+    power = protagonist_state.get("power") if isinstance(protagonist_state.get("power"), dict) else {}
+    golden_finger = (
+        protagonist_state.get("golden_finger")
+        if isinstance(protagonist_state.get("golden_finger"), dict)
+        else {}
+    )
+
+    history_rows = []
+    tracker = state.get("strand_tracker")
+    if isinstance(tracker, dict):
+        raw_history = tracker.get("history")
+        if isinstance(raw_history, list):
+            history_rows = raw_history[-5:]
+
+    history: List[Dict[str, Any]] = []
+    for row in history_rows:
+        if not isinstance(row, dict):
+            continue
+        history.append(
+            {
+                "chapter": row.get("chapter", "?"),
+                "strand": _safe_text(row.get("strand") or row.get("dominant") or "unknown", "unknown"),
+            }
         )
 
-    if "protagonist_state" in state:
-        ps = state["protagonist_state"]
-        power = ps.get("power", {})
-        summary_parts.append(f"**主角实力**: {power.get('realm', '?')} {power.get('layer', '?')}层")
-        summary_parts.append(f"**当前位置**: {ps.get('location', '?')}")
-        golden_finger = ps.get("golden_finger", {})
-        summary_parts.append(
-            f"**金手指**: {golden_finger.get('name', '?')} Lv.{golden_finger.get('level', '?')}"
-        )
-
-    if "strand_tracker" in state:
-        tracker = state["strand_tracker"]
-        history = tracker.get("history", [])[-5:]
-        if history:
-            items: List[str] = []
-            for row in history:
+    urgent_foreshadowing: List[Dict[str, Any]] = []
+    plot_threads = state.get("plot_threads")
+    if isinstance(plot_threads, dict):
+        foreshadowing_rows = plot_threads.get("foreshadowing")
+        if isinstance(foreshadowing_rows, list):
+            for row in foreshadowing_rows:
                 if not isinstance(row, dict):
                     continue
-                chapter = row.get("chapter", "?")
-                strand = row.get("strand") or row.get("dominant") or "unknown"
-                items.append(f"Ch{chapter}:{strand}")
-            if items:
-                summary_parts.append(f"**近5章Strand**: {', '.join(items)}")
+                status = row.get("status")
+                if status not in {"active", "未回收"}:
+                    continue
+                try:
+                    urgency = float(row.get("urgency") or 0)
+                except (TypeError, ValueError):
+                    urgency = 0
+                if urgency <= 50:
+                    continue
+                urgent_foreshadowing.append(
+                    {
+                        "content": _safe_text(row.get("content"), "?")[:30],
+                        "urgency": row.get("urgency"),
+                    }
+                )
+                if len(urgent_foreshadowing) >= 3:
+                    break
 
-    plot_threads = state.get("plot_threads", {}) if isinstance(state.get("plot_threads"), dict) else {}
-    foreshadowing = plot_threads.get("foreshadowing", [])
-    if isinstance(foreshadowing, list) and foreshadowing:
-        active = [row for row in foreshadowing if row.get("status") in {"active", "未回收"}]
-        urgent = [row for row in active if row.get("urgency", 0) > 50]
-        if urgent:
-            urgent_list = [
-                f"{row.get('content', '?')[:30]}... (紧急度:{row.get('urgency')})"
-                for row in urgent[:3]
-            ]
-            summary_parts.append(f"**紧急伏笔**: {'; '.join(urgent_list)}")
+    return {
+        "warning": warning,
+        "progress": {
+            "current_chapter": progress.get("current_chapter", "?"),
+            "total_words": progress.get("total_words", "?"),
+        },
+        "protagonist": {
+            "realm": _safe_text(power.get("realm"), "?"),
+            "layer": _safe_text(power.get("layer"), "?"),
+            "location": _extract_location(protagonist_state.get("location")),
+            "golden_finger_name": _safe_text(golden_finger.get("name"), "?"),
+            "golden_finger_level": _safe_text(golden_finger.get("level"), "?"),
+        },
+        "strand_history": history,
+        "urgent_foreshadowing": urgent_foreshadowing,
+    }
+
+
+def _render_state_snapshot(state_snapshot: Dict[str, Any]) -> str:
+    summary_parts: List[str] = []
+    warning = _safe_text(state_snapshot.get("warning"), "").strip()
+    if warning:
+        summary_parts.append(warning)
+
+    progress = state_snapshot.get("progress") if isinstance(state_snapshot.get("progress"), dict) else {}
+    summary_parts.append(
+        f"**进度**: 第{progress.get('current_chapter', '?')}章 / {progress.get('total_words', '?')}字"
+    )
+
+    protagonist = (
+        state_snapshot.get("protagonist")
+        if isinstance(state_snapshot.get("protagonist"), dict)
+        else {}
+    )
+    summary_parts.append(
+        f"**主角实力**: {_safe_text(protagonist.get('realm'), '?')} {_safe_text(protagonist.get('layer'), '?')}层"
+    )
+    summary_parts.append(f"**当前位置**: {_safe_text(protagonist.get('location'), '?')}")
+    summary_parts.append(
+        f"**金手指**: {_safe_text(protagonist.get('golden_finger_name'), '?')} "
+        f"Lv.{_safe_text(protagonist.get('golden_finger_level'), '?')}"
+    )
+
+    history = state_snapshot.get("strand_history")
+    if isinstance(history, list) and history:
+        items: List[str] = []
+        for row in history:
+            if not isinstance(row, dict):
+                continue
+            items.append(f"Ch{row.get('chapter', '?')}:{_safe_text(row.get('strand'), 'unknown')}")
+        if items:
+            summary_parts.append(f"**近5章Strand**: {', '.join(items)}")
+
+    urgent_foreshadowing = state_snapshot.get("urgent_foreshadowing")
+    if isinstance(urgent_foreshadowing, list) and urgent_foreshadowing:
+        urgent_items: List[str] = []
+        for row in urgent_foreshadowing[:3]:
+            if not isinstance(row, dict):
+                continue
+            urgent_items.append(
+                f"{_safe_text(row.get('content'), '?')}... (紧急度:{_safe_text(row.get('urgency'), '?')})"
+            )
+        if urgent_items:
+            summary_parts.append(f"**紧急伏笔**: {'; '.join(urgent_items)}")
 
     return "\n".join(summary_parts)
+
+
+def extract_state_summary(project_root: Path) -> str:
+    """Extract key fields from `.webnovel/state.json`."""
+    return _render_state_snapshot(extract_state_snapshot(project_root))
 
 
 def _normalize_outline_text(outline: str) -> str:
@@ -317,6 +471,24 @@ def _load_contract_context(project_root: Path, chapter_num: int) -> Dict[str, An
     }
 
 
+def _empty_rag_payload(reason: str) -> Dict[str, Any]:
+    return {"enabled": False, "invoked": False, "reason": reason, "query": "", "hits": []}
+
+
+def _ensure_target_chapter_exists(project_root: Path, chapter_num: int) -> None:
+    chapter_file = find_chapter_file(project_root, chapter_num)
+    if chapter_file and chapter_file.exists():
+        return
+
+    chapters_dir = project_root / "正文"
+    raise FileNotFoundError(
+        "章节不存在: "
+        f"chapter={chapter_num}, "
+        f"chapters_dir={chapters_dir}, "
+        f"pattern=第{chapter_num:03d}章*.md|第{chapter_num:04d}章*.md"
+    )
+
+
 def build_chapter_context_payload(project_root: Path, chapter_num: int) -> Dict[str, Any]:
     """Assemble full chapter context payload for text/json output."""
     outline = extract_chapter_outline(project_root, chapter_num)
@@ -326,15 +498,38 @@ def build_chapter_context_payload(project_root: Path, chapter_num: int) -> Dict[
         summary = extract_chapter_summary(project_root, prev_ch)
         prev_summaries.append(f"### 第{prev_ch}章摘要\n{summary}")
 
-    state_summary = extract_state_summary(project_root)
-    contract_context = _load_contract_context(project_root, chapter_num)
-    rag_assist = _load_rag_assist(project_root, chapter_num, outline)
+    state_snapshot = extract_state_snapshot(project_root)
+    state_summary = _render_state_snapshot(state_snapshot)
+    warnings: List[str] = []
+    state_warning = _safe_text(state_snapshot.get("warning"), "").strip()
+    if state_warning:
+        warnings.append(state_warning)
+
+    contract_context: Dict[str, Any]
+    rag_assist: Dict[str, Any]
+    if state_warning:
+        contract_context = {}
+        rag_assist = _empty_rag_payload("state_missing")
+    else:
+        try:
+            contract_context = _load_contract_context(project_root, chapter_num)
+        except Exception as exc:
+            warnings.append(f"⚠️ Contract 上下文加载失败({exc.__class__.__name__})")
+            contract_context = {}
+
+        try:
+            rag_assist = _load_rag_assist(project_root, chapter_num, outline)
+        except Exception as exc:
+            warnings.append(f"⚠️ RAG 辅助加载失败({exc.__class__.__name__})")
+            rag_assist = _empty_rag_payload(f"rag_error:{exc.__class__.__name__}")
 
     return {
         "chapter": chapter_num,
         "outline": outline,
         "previous_summaries": prev_summaries,
+        "state": state_snapshot,
         "state_summary": state_summary,
+        "warnings": warnings,
         "context_contract_version": contract_context.get("context_contract_version"),
         "context_weight_stage": contract_context.get("context_weight_stage"),
         "reader_signal": contract_context.get("reader_signal", {}),
@@ -368,7 +563,11 @@ def _render_text(payload: Dict[str, Any]) -> str:
     lines.append("")
     lines.append("## 当前状态")
     lines.append("")
-    lines.append(str(payload.get("state_summary", "")))
+    state_snapshot = payload.get("state")
+    if isinstance(state_snapshot, dict):
+        lines.append(_render_state_snapshot(state_snapshot))
+    else:
+        lines.append(str(payload.get("state_summary", "")))
     lines.append("")
 
     contract_version = payload.get("context_contract_version")
@@ -505,8 +704,17 @@ def _render_text(payload: Dict[str, Any]) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="提取章节创作所需的精简上下文")
-    parser.add_argument("--chapter", type=int, required=True, help="目标章节号")
-    parser.add_argument("--project-root", type=str, help="项目根目录")
+    parser.add_argument(
+        "--chapter",
+        type=int,
+        required=True,
+        help="目标章节号（必须可在正文目录定位到对应章节文件）",
+    )
+    parser.add_argument(
+        "--project-root",
+        type=str,
+        help="项目根目录（state.json 缺失时将给出警告并降级输出）",
+    )
     parser.add_argument("--format", choices=["text", "json"], default="text", help="输出格式")
 
     args = parser.parse_args()
@@ -517,6 +725,7 @@ def main():
             if args.project_root
             else find_project_root()
         )
+        _ensure_target_chapter_exists(project_root, args.chapter)
         payload = build_chapter_context_payload(project_root, args.chapter)
 
         if args.format == "json":
