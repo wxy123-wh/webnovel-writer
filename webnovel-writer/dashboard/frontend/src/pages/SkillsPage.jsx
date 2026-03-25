@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PageScaffold from '../components/PageScaffold.jsx'
-import { createSkill, deleteSkill, listSkills, toggleSkill } from '../api/skills.js'
+import {
+    classifySkillsError,
+    createSkill,
+    deleteSkill,
+    listSkills,
+    toggleSkill,
+} from '../api/skills.js'
 
 const FORM_GRID_STYLE = {
     display: 'grid',
@@ -20,9 +26,38 @@ const FIELD_STYLE = {
 }
 
 function getErrorMessage(error, fallback = '请求失败') {
-    if (!error) return fallback
-    const code = error.errorCode ? ` (${error.errorCode})` : ''
-    return `${error.message || fallback}${code}`
+    const type = classifySkillsError(error)
+    const code = error?.errorCode || error?.error_code || ''
+    const codeSuffix = code ? ` (${code})` : ''
+
+    if (type === 'network') {
+        return `网络连接失败，请检查服务状态后重试${codeSuffix}`
+    }
+    if (type === 'permission') {
+        return `权限不足或工作区不匹配，请确认当前工作区配置${codeSuffix}`
+    }
+    if (type === 'conflict') {
+        if (code === 'skill_id_conflict') {
+            return `技能 ID 已存在，请使用新的 ID${codeSuffix}`
+        }
+        if (code === 'skill_name_conflict') {
+            return `技能名称已存在，请使用新的名称${codeSuffix}`
+        }
+        return `存在资源冲突，请刷新后重试${codeSuffix}`
+    }
+    if (type === 'validation') {
+        return `${error?.message || '请求参数不合法，请检查技能 ID 和名称'}${codeSuffix}`
+    }
+    return `${error?.message || fallback}${codeSuffix}`
+}
+
+function getErrorBadge(error) {
+    const type = classifySkillsError(error)
+    if (type === 'network') return '网络错误'
+    if (type === 'permission') return '权限错误'
+    if (type === 'conflict') return '冲突错误'
+    if (type === 'validation') return '参数错误'
+    return '请求错误'
 }
 
 function formatDateTime(value) {
@@ -35,7 +70,7 @@ function formatDateTime(value) {
 export default function SkillsPage() {
     const [skills, setSkills] = useState([])
     const [loading, setLoading] = useState(true)
-    const [error, setError] = useState('')
+    const [error, setError] = useState(null)
     const [notice, setNotice] = useState('')
     const [busyId, setBusyId] = useState('')
 
@@ -47,12 +82,12 @@ export default function SkillsPage() {
 
     const refresh = useCallback(async () => {
         setLoading(true)
-        setError('')
+        setError(null)
         try {
             const response = await listSkills()
             setSkills(response.items)
         } catch (err) {
-            setError(getErrorMessage(err, '加载技能列表失败'))
+            setError(err)
         } finally {
             setLoading(false)
         }
@@ -70,12 +105,16 @@ export default function SkillsPage() {
     const onCreate = async event => {
         event.preventDefault()
         if (!id.trim() || !name.trim()) {
-            setError('技能 ID 和名称不能为空')
+            setError({
+                status: 400,
+                errorCode: 'invalid_skill_form',
+                message: '技能 ID 和名称不能为空',
+            })
             return
         }
 
         setCreating(true)
-        setError('')
+        setError(null)
         setNotice('')
         try {
             await createSkill({
@@ -91,7 +130,7 @@ export default function SkillsPage() {
             setEnabled(true)
             await refresh()
         } catch (err) {
-            setError(getErrorMessage(err, '新增技能失败'))
+            setError(err)
         } finally {
             setCreating(false)
         }
@@ -99,7 +138,7 @@ export default function SkillsPage() {
 
     const onToggle = async skill => {
         setBusyId(skill.id)
-        setError('')
+        setError(null)
         setNotice('')
         try {
             const response = await toggleSkill({
@@ -114,7 +153,7 @@ export default function SkillsPage() {
             )
             setNotice(`${response.enabled ? '已启用' : '已禁用'}技能: ${skill.id}`)
         } catch (err) {
-            setError(getErrorMessage(err, '切换技能状态失败'))
+            setError(err)
         } finally {
             setBusyId('')
         }
@@ -126,7 +165,7 @@ export default function SkillsPage() {
         }
 
         setBusyId(skill.id)
-        setError('')
+        setError(null)
         setNotice('')
         try {
             await deleteSkill({
@@ -136,7 +175,7 @@ export default function SkillsPage() {
             setSkills(current => current.filter(item => item.id !== skill.id))
             setNotice(`已删除技能: ${skill.id}`)
         } catch (err) {
-            setError(getErrorMessage(err, '删除技能失败'))
+            setError(err)
         } finally {
             setBusyId('')
         }
@@ -152,9 +191,9 @@ export default function SkillsPage() {
                 <div className="card" role="alert">
                     <div className="card-header">
                         <span className="card-title">错误反馈</span>
-                        <span className="card-badge badge-red">API Error</span>
+                        <span className="card-badge badge-red">{getErrorBadge(error)}</span>
                     </div>
-                    <p style={{ margin: 0 }}>{error}</p>
+                    <p style={{ margin: 0 }}>{getErrorMessage(error, '操作失败')}</p>
                 </div>
             ) : null}
 

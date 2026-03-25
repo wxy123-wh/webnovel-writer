@@ -28,6 +28,8 @@ except Exception:  # pragma: no cover - fallback when dependency is absent
 
 
 _SKILL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_SKILL_NAME_CONTROL_PATTERN = re.compile(r"[\x00-\x1f\x7f]")
+_SKILL_NAME_MAX_LENGTH = 80
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,9 @@ def _ensure_dirs(paths: SkillPaths) -> None:
     paths.webnovel_dir.mkdir(parents=True, exist_ok=True)
     paths.skills_dir.mkdir(parents=True, exist_ok=True)
     paths.logs_dir.mkdir(parents=True, exist_ok=True)
+    state_path = paths.webnovel_dir / "state.json"
+    if not state_path.exists():
+        state_path.write_text("{}", encoding="utf-8")
 
 
 def _normalize_skill(raw: dict[str, Any]) -> dict[str, Any]:
@@ -187,6 +192,30 @@ def _validate_skill_id(skill_id: str) -> str:
     return normalized
 
 
+def _validate_skill_name(name: str) -> str:
+    normalized = (name or "").strip()
+    if not normalized:
+        raise SkillServiceError(
+            status_code=400,
+            error_code="invalid_skill_name",
+            message="skill name must not be empty.",
+        )
+    if len(normalized) > _SKILL_NAME_MAX_LENGTH:
+        raise SkillServiceError(
+            status_code=400,
+            error_code="invalid_skill_name",
+            message=f"skill name must be <= {_SKILL_NAME_MAX_LENGTH} characters.",
+            details={"max_length": _SKILL_NAME_MAX_LENGTH},
+        )
+    if _SKILL_NAME_CONTROL_PATTERN.search(normalized):
+        raise SkillServiceError(
+            status_code=400,
+            error_code="invalid_skill_name",
+            message="skill name contains control characters.",
+        )
+    return normalized
+
+
 def _skill_dir(paths: SkillPaths, skill_id: str) -> Path:
     return paths.skills_dir / skill_id
 
@@ -255,6 +284,55 @@ def _find_skill_index(items: list[dict[str, Any]], skill_id: str) -> int:
     return -1
 
 
+def _find_skill_name_conflict(
+    items: list[dict[str, Any]],
+    *,
+    name: str,
+    exclude_skill_id: str | None = None,
+) -> str | None:
+    normalized = name.casefold()
+    for item in items:
+        item_id = str(item.get("id", ""))
+        if exclude_skill_id and item_id == exclude_skill_id:
+            continue
+        if str(item.get("name", "")).strip().casefold() == normalized:
+            return item_id
+    return None
+
+
+def _parse_time_filter(*, raw: str, field_name: str) -> datetime:
+    value = raw.strip()
+    if value.endswith("Z"):
+        value = f"{value[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise SkillServiceError(
+            status_code=400,
+            error_code="invalid_audit_time",
+            message=f"{field_name} must be an ISO 8601 datetime.",
+            details={field_name: raw},
+        ) from exc
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _parse_optional_entry_time(raw: Any) -> datetime | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def list_skills(
     *,
     runtime_project_root: Path | str,
@@ -301,6 +379,7 @@ def create_skill(
         workspace_project_root=workspace_project_root,
     )
     normalized_id = _validate_skill_id(skill_id)
+    normalized_name = _validate_skill_name(name or normalized_id)
     paths = _paths(project_root)
     _ensure_dirs(paths)
     registry = _load_registry(paths=paths, workspace_id=workspace_id, project_root=project_root)
@@ -309,15 +388,23 @@ def create_skill(
     if _find_skill_index(items, normalized_id) >= 0:
         raise SkillServiceError(
             status_code=409,
-            error_code="skill_exists",
-            message="Skill already exists.",
+            error_code="skill_id_conflict",
+            message="Skill id already exists.",
             details={"skill_id": normalized_id},
+        )
+    conflict_id = _find_skill_name_conflict(items, name=normalized_name)
+    if conflict_id is not None:
+        raise SkillServiceError(
+            status_code=409,
+            error_code="skill_name_conflict",
+            message="Skill name already exists.",
+            details={"name": normalized_name, "conflict_skill_id": conflict_id},
         )
 
     now = _utc_now()
     skill = {
         "id": normalized_id,
-        "name": (name or normalized_id).strip(),
+        "name": normalized_name,
         "description": (description or "").strip(),
         "enabled": bool(enabled),
         "scope": "workspace",
@@ -372,8 +459,20 @@ def update_skill(
     skill = dict(items[idx])
     changed: dict[str, Any] = {}
     if name is not None:
-        new_name = name.strip()
-        if new_name and new_name != skill["name"]:
+        new_name = _validate_skill_name(name)
+        conflict_id = _find_skill_name_conflict(
+            items,
+            name=new_name,
+            exclude_skill_id=normalized_id,
+        )
+        if conflict_id is not None:
+            raise SkillServiceError(
+                status_code=409,
+                error_code="skill_name_conflict",
+                message="Skill name already exists.",
+                details={"name": new_name, "conflict_skill_id": conflict_id},
+            )
+        if new_name != skill["name"]:
             skill["name"] = new_name
             changed["name"] = new_name
     if description is not None:
@@ -524,8 +623,12 @@ def list_skill_audit(
     runtime_project_root: Path | str,
     workspace_id: str,
     workspace_project_root: str | None,
-    limit: int,
-    offset: int,
+    action: str | None = None,
+    actor: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     workspace_id, project_root = _resolve_workspace(
         runtime_project_root=runtime_project_root,
@@ -536,6 +639,18 @@ def list_skill_audit(
     _ensure_dirs(paths)
     if not paths.audit_path.is_file():
         return [], 0
+
+    normalized_action = action.strip().casefold() if action and action.strip() else None
+    normalized_actor = actor.strip().casefold() if actor and actor.strip() else None
+    start_at = _parse_time_filter(raw=start_time, field_name="start_time") if start_time and start_time.strip() else None
+    end_at = _parse_time_filter(raw=end_time, field_name="end_time") if end_time and end_time.strip() else None
+    if start_at and end_at and start_at > end_at:
+        raise SkillServiceError(
+            status_code=400,
+            error_code="invalid_audit_time_range",
+            message="start_time must be earlier than or equal to end_time.",
+            details={"start_time": start_time, "end_time": end_time},
+        )
 
     items: list[dict[str, Any]] = []
     for line in paths.audit_path.read_text(encoding="utf-8").splitlines():
@@ -554,13 +669,28 @@ def list_skill_audit(
                 continue
             if details.get("project_root") != str(project_root):
                 continue
+        entry_action = str(entry.get("action", "unknown"))
+        entry_actor = str(entry.get("actor", "system"))
+        if normalized_action and entry_action.casefold() != normalized_action:
+            continue
+        if normalized_actor and entry_actor.casefold() != normalized_actor:
+            continue
+        entry_created_at = str(entry.get("created_at", _utc_now()))
+        entry_created_dt = _parse_optional_entry_time(entry_created_at)
+        if start_at or end_at:
+            if entry_created_dt is None:
+                continue
+            if start_at and entry_created_dt < start_at:
+                continue
+            if end_at and entry_created_dt > end_at:
+                continue
         items.append(
             {
                 "id": str(entry.get("id", f"audit-{uuid4().hex}")),
-                "action": str(entry.get("action", "unknown")),
+                "action": entry_action,
                 "skill_id": str(entry.get("skill_id", "")),
-                "actor": str(entry.get("actor", "system")),
-                "created_at": str(entry.get("created_at", _utc_now())),
+                "actor": entry_actor,
+                "created_at": entry_created_at,
                 "details": details if isinstance(details, dict) else {},
             }
         )
