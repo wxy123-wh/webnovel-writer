@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import json
 import sys
 from pathlib import Path
 
@@ -181,6 +182,113 @@ def test_preflight_fails_when_required_scripts_are_missing(monkeypatch, tmp_path
     assert '"ok": false' in captured.out
     assert '"name": "entry_script"' in captured.out
 
+
+def test_preflight_json_includes_binding_details(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    (workspace_root / ".codex").mkdir(parents=True, exist_ok=True)
+
+    project_root = workspace_root / "book"
+    (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+    (project_root / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")
+
+    pointer_file = workspace_root / ".codex" / ".webnovel-current-project"
+    pointer_file.write_text(str(project_root.resolve()), encoding="utf-8")
+
+    registry_home = tmp_path / "codex-home"
+    monkeypatch.setenv("CODEX_HOME", str(registry_home))
+    registry_path = registry_home / "webnovel-writer" / "registry.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "workspaces": {
+                    str(workspace_root.resolve()).lower(): {
+                        "workspace_root": str(workspace_root.resolve()),
+                        "current_project_root": str(project_root.resolve()),
+                        "updated_at": "2026-03-25T00:00:00",
+                    }
+                },
+                "last_used_project_root": str(project_root.resolve()),
+                "updated_at": "2026-03-25T00:00:00",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["webnovel", "--project-root", str(workspace_root), "preflight", "--format", "json"],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert int(exc.value.code or 0) == 0
+    payload = json.loads(captured.out)
+    assert "binding" in payload
+    assert "pointer" in payload["binding"]
+    assert "registry" in payload["binding"]
+    assert payload["binding"]["project_root"]["ok"] is True
+
+
+def test_where_fails_with_clear_reason_when_state_json_missing(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    invalid_root = tmp_path / "workspace"
+    (invalid_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(sys, "argv", ["webnovel", "--project-root", str(invalid_root), "where"])
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert int(exc.value.code or 0) == 1
+    assert "missing .webnovel/state.json" in captured.err
+
+
+def test_use_writes_registry_and_reports_pointer_skip_reason(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir(parents=True, exist_ok=True)
+
+    project_root = workspace_root / "book"
+    (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+    (project_root / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")
+
+    registry_home = tmp_path / "codex-home"
+    monkeypatch.setenv("CODEX_HOME", str(registry_home))
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "use",
+            str(project_root),
+            "--workspace-root",
+            str(workspace_root),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert int(exc.value.code or 0) == 0
+    assert "workspace pointer: (skipped: reason=context_dir_missing" in captured.out
+    assert "global registry:" in captured.out
+
+    registry_path = registry_home / "webnovel-writer" / "registry.json"
+    assert registry_path.is_file()
 
 def test_quality_trend_report_writes_to_book_root_when_input_is_workspace_root(tmp_path, monkeypatch):
     _ensure_scripts_on_path()

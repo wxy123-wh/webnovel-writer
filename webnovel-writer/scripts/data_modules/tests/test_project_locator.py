@@ -4,6 +4,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _ensure_scripts_on_path() -> None:
     scripts_dir = Path(__file__).resolve().parents[2]
@@ -130,4 +132,18 @@ def test_resolve_project_root_ignores_stale_pointer_and_fallbacks(tmp_path):
 
     resolved = resolve_project_root(cwd=workspace)
     assert resolved == default_project.resolve()
+
+
+def test_resolve_project_root_rejects_webnovel_dir_without_state_json(tmp_path):
+    _ensure_scripts_on_path()
+
+    from project_locator import resolve_project_root
+
+    invalid_root = tmp_path / "workspace"
+    (invalid_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(FileNotFoundError) as exc:
+        resolve_project_root(cwd=invalid_root)
+
+    assert ".webnovel/state.json" in str(exc.value)
 

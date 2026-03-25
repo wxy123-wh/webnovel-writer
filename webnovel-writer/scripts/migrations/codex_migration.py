@@ -42,8 +42,7 @@ def _normalize_path(path: Path) -> Path:
 
 
 def _is_project_root(path: Path) -> bool:
-    webnovel_dir = path / ".webnovel"
-    return (webnovel_dir / "state.json").is_file() or webnovel_dir.is_dir()
+    return (path / ".webnovel" / "state.json").is_file()
 
 
 def _record_move(report: dict, *, kind: str, src: Path, dst: Path, dry_run: bool) -> None:
@@ -311,7 +310,7 @@ def migrate_codex_runtime(
 ) -> dict:
     root = _normalize_path(project_root)
     if not _is_project_root(root):
-        raise FileNotFoundError(f"Not a webnovel project root: {root}")
+        raise FileNotFoundError(f"Not a webnovel project root (missing .webnovel/state.json): {root}")
 
     report: dict = {
         "moved": [],

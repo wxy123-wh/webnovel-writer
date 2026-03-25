@@ -32,7 +32,265 @@ from pathlib import Path
 from typing import Optional
 
 from runtime_compat import normalize_windows_path
-from project_locator import resolve_project_root, write_current_project_pointer, update_global_registry_current_project
+from project_locator import (
+    CURRENT_PROJECT_POINTER_FILE,
+    POINTER_DIR_NAMES,
+    _global_registry_paths,
+    _load_global_registry,
+    _normcase_path_key,
+    resolve_project_root,
+    update_global_registry_current_project,
+    write_current_project_pointer,
+)
+
+
+USE_EXIT_OK = 0
+USE_EXIT_INVALID_PROJECT_ROOT = 2
+USE_EXIT_REGISTRY_FAILED = 3
+
+
+def _normalize_path(raw: str | Path) -> Path:
+    p = normalize_windows_path(str(raw)).expanduser()
+    try:
+        return p.resolve()
+    except Exception:
+        return p
+
+
+def _is_project_root(path: Path) -> bool:
+    return (path / ".webnovel" / "state.json").is_file()
+
+
+def _find_workspace_root_with_context_dir(start: Path) -> Optional[Path]:
+    for candidate in (start, *start.parents):
+        for dirname in POINTER_DIR_NAMES:
+            if (candidate / dirname).is_dir():
+                return candidate
+    return None
+
+
+def _first_context_dir(workspace_root: Optional[Path]) -> Optional[Path]:
+    if workspace_root is None:
+        return None
+    for dirname in POINTER_DIR_NAMES:
+        candidate = workspace_root / dirname
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def _resolve_workspace_root_for_binding(
+    *,
+    project_root: Optional[Path],
+    explicit_workspace_root: Optional[Path],
+) -> Optional[Path]:
+    if explicit_workspace_root is not None:
+        return _normalize_path(explicit_workspace_root)
+
+    if project_root is not None:
+        ws = _find_workspace_root_with_context_dir(project_root)
+        if ws is not None:
+            return ws.resolve()
+
+    cwd = Path.cwd().resolve()
+    ws_from_cwd = _find_workspace_root_with_context_dir(cwd)
+    if ws_from_cwd is not None:
+        return ws_from_cwd.resolve()
+
+    if project_root is not None and project_root.parent != project_root:
+        return project_root.parent
+    return None
+
+
+def _path_eq(a: Path, b: Path) -> bool:
+    return _normcase_path_key(a) == _normcase_path_key(b)
+
+
+def _pointer_skip_detail(*, reason: str, workspace_root: Optional[Path]) -> tuple[str, str]:
+    if reason == "context_dir_missing":
+        if workspace_root is None:
+            return reason, "create <workspace>/.codex and rerun `webnovel use ... --workspace-root <workspace>`"
+        return reason, f"create {workspace_root / '.codex'} and rerun `webnovel use ... --workspace-root {workspace_root}`"
+    if reason == "workspace_root_unavailable":
+        return reason, "pass --workspace-root <workspace> to `webnovel use`"
+    if reason == "pointer_write_failed":
+        return reason, "check write permissions for workspace context dir and rerun"
+    return reason, "rerun `webnovel use` after fixing workspace context"
+
+
+def _inspect_pointer_state(project_root: Optional[Path], workspace_root: Optional[Path]) -> dict[str, object]:
+    result: dict[str, object] = {
+        "ok": False,
+        "status": "skipped",
+        "path": "",
+        "reason": "",
+        "suggestion": "",
+        "target": "",
+    }
+    project_label = str(project_root) if project_root is not None else "<project_root>"
+    workspace_label = str(workspace_root) if workspace_root is not None else "<workspace>"
+
+    if project_root is None:
+        result["reason"] = "project_root_unresolved"
+        result["suggestion"] = "fix project_root first"
+        return result
+
+    if workspace_root is None:
+        reason, suggestion = _pointer_skip_detail(reason="workspace_root_unavailable", workspace_root=None)
+        result["reason"] = reason
+        result["suggestion"] = suggestion
+        return result
+
+    context_dir = _first_context_dir(workspace_root)
+    if context_dir is None:
+        reason, suggestion = _pointer_skip_detail(reason="context_dir_missing", workspace_root=workspace_root)
+        result["reason"] = reason
+        result["suggestion"] = suggestion
+        return result
+
+    pointer_file = context_dir / CURRENT_PROJECT_POINTER_FILE
+    result["path"] = str(pointer_file)
+    if not pointer_file.is_file():
+        result["status"] = "missing"
+        result["reason"] = "pointer_file_missing"
+        result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+        return result
+
+    try:
+        raw = pointer_file.read_text(encoding="utf-8").strip()
+    except Exception as exc:
+        result["status"] = "error"
+        result["reason"] = f"pointer_read_failed:{type(exc).__name__}"
+        result["suggestion"] = "check pointer file permissions/encoding"
+        return result
+
+    if not raw:
+        result["status"] = "error"
+        result["reason"] = "pointer_empty"
+        result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+        return result
+
+    target = _normalize_path(raw) if Path(raw).is_absolute() else _normalize_path(pointer_file.parent / raw)
+    result["target"] = str(target)
+    if not _is_project_root(target):
+        result["status"] = "error"
+        result["reason"] = "pointer_target_invalid"
+        result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+        return result
+
+    if not _path_eq(target, project_root):
+        result["status"] = "error"
+        result["reason"] = "pointer_target_mismatch"
+        result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+        return result
+
+    result["ok"] = True
+    result["status"] = "valid"
+    result["reason"] = ""
+    result["suggestion"] = ""
+    return result
+
+
+def _inspect_registry_state(project_root: Optional[Path], workspace_root: Optional[Path]) -> dict[str, object]:
+    result: dict[str, object] = {
+        "ok": False,
+        "status": "missing",
+        "path": "",
+        "reason": "",
+        "suggestion": "",
+        "mapped_project_root": "",
+    }
+    project_label = str(project_root) if project_root is not None else "<project_root>"
+    workspace_label = str(workspace_root) if workspace_root is not None else "<workspace>"
+
+    registry_candidates = _global_registry_paths()
+    if not registry_candidates:
+        result["status"] = "error"
+        result["reason"] = "registry_path_unavailable"
+        result["suggestion"] = "set CODEX_HOME/CLAUDE_HOME and rerun preflight"
+        return result
+
+    existing_files = [path for path in registry_candidates if path.is_file()]
+    inspect_path = existing_files[0] if existing_files else registry_candidates[0]
+    result["path"] = str(inspect_path)
+
+    if workspace_root is None:
+        result["status"] = "skipped"
+        result["reason"] = "workspace_root_unavailable"
+        result["suggestion"] = "pass --project-root <workspace> or run preflight inside workspace"
+        return result
+
+    ws_key = _normcase_path_key(workspace_root)
+    for reg_path in existing_files:
+        data = _load_global_registry(reg_path)
+        workspaces = data.get("workspaces")
+        if not isinstance(workspaces, dict):
+            continue
+        entry = workspaces.get(ws_key)
+        if not isinstance(entry, dict):
+            continue
+
+        result["path"] = str(reg_path)
+        mapped = entry.get("current_project_root")
+        if not isinstance(mapped, str) or not mapped.strip():
+            result["status"] = "error"
+            result["reason"] = "registry_entry_invalid"
+            result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+            return result
+
+        target = _normalize_path(mapped)
+        result["mapped_project_root"] = str(target)
+        if not _is_project_root(target):
+            result["status"] = "error"
+            result["reason"] = "registry_target_invalid"
+            result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+            return result
+
+        if project_root is not None and not _path_eq(target, project_root):
+            result["status"] = "error"
+            result["reason"] = "registry_target_mismatch"
+            result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+            return result
+
+        result["ok"] = True
+        result["status"] = "valid"
+        result["reason"] = ""
+        result["suggestion"] = ""
+        return result
+
+    if not existing_files:
+        result["status"] = "missing"
+        result["reason"] = "registry_file_missing"
+        result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+        return result
+
+    result["status"] = "missing"
+    result["reason"] = "workspace_unregistered"
+    result["suggestion"] = f"run `webnovel use {project_label} --workspace-root {workspace_label}`"
+    return result
+
+
+def _binding_check_item(name: str, detail: dict[str, object], *, required: bool = False) -> dict[str, object]:
+    item: dict[str, object] = {
+        "name": name,
+        "ok": bool(detail.get("ok")),
+        "required": bool(required),
+        "path": str(detail.get("path") or ""),
+        "status": str(detail.get("status") or ""),
+    }
+    reason = str(detail.get("reason") or "")
+    suggestion = str(detail.get("suggestion") or "")
+    if reason:
+        item["reason"] = reason
+    if suggestion:
+        item["suggestion"] = suggestion
+    target = str(detail.get("target") or "")
+    if target:
+        item["target"] = target
+    mapped = str(detail.get("mapped_project_root") or "")
+    if mapped:
+        item["mapped_project_root"] = mapped
+    return item
 
 
 def _scripts_dir() -> Path:
@@ -102,7 +360,11 @@ def _run_script(script_name: str, argv: list[str]) -> int:
 
 
 def cmd_where(args: argparse.Namespace) -> int:
-    root = _resolve_root(args.project_root)
+    try:
+        root = _resolve_root(args.project_root)
+    except Exception as exc:
+        print(f"ERROR project_root: {exc}", file=sys.stderr)
+        return 1
     print(str(root))
     return 0
 
@@ -123,19 +385,55 @@ def _build_preflight_report(explicit_project_root: Optional[str]) -> dict:
 
     project_root = ""
     project_root_error = ""
+    resolved_root: Optional[Path] = None
     try:
         resolved_root = _resolve_root(explicit_project_root)
         project_root = str(resolved_root)
-        checks.append({"name": "project_root", "ok": True, "path": project_root})
+        checks.append({"name": "project_root", "ok": True, "required": True, "path": project_root})
     except Exception as exc:
         project_root_error = str(exc)
-        checks.append({"name": "project_root", "ok": False, "path": explicit_project_root or "", "error": project_root_error})
+        checks.append(
+            {
+                "name": "project_root",
+                "ok": False,
+                "required": True,
+                "path": explicit_project_root or "",
+                "error": project_root_error,
+            }
+        )
+
+    explicit_hint: Optional[Path] = None
+    if explicit_project_root:
+        explicit_hint = _normalize_path(explicit_project_root)
+    workspace_root = _resolve_workspace_root_for_binding(
+        project_root=resolved_root,
+        explicit_workspace_root=explicit_hint,
+    )
+    pointer_state = _inspect_pointer_state(resolved_root, workspace_root)
+    registry_state = _inspect_registry_state(resolved_root, workspace_root)
+    root_state = {
+        "ok": bool(resolved_root is not None),
+        "status": "valid" if resolved_root is not None else "invalid",
+        "path": project_root if resolved_root is not None else (explicit_project_root or ""),
+        "reason": "" if resolved_root is not None else "project_root_unresolved",
+        "suggestion": "" if resolved_root is not None else "run `webnovel where --project-root <project_root>` to diagnose",
+    }
+
+    checks.append(_binding_check_item("root_state", root_state, required=True))
+    checks.append(_binding_check_item("workspace_pointer", pointer_state, required=False))
+    checks.append(_binding_check_item("global_registry", registry_state, required=False))
 
     return {
-        "ok": all(bool(item["ok"]) for item in checks),
+        "ok": all(bool(item["ok"]) for item in checks if bool(item.get("required", True))),
         "project_root": project_root,
         "scripts_dir": str(scripts_dir),
         "skill_root": str(skill_root),
+        "workspace_root": str(workspace_root) if workspace_root is not None else "",
+        "binding": {
+            "project_root": root_state,
+            "pointer": pointer_state,
+            "registry": registry_state,
+        },
         "checks": checks,
         "project_root_error": project_root_error,
     }
@@ -147,44 +445,87 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         for item in report["checks"]:
-            status = "OK" if item["ok"] else "ERROR"
+            required = bool(item.get("required", True))
+            if item["ok"]:
+                status = "OK"
+            else:
+                status = "ERROR" if required else "WARN"
             path = item.get("path") or ""
-            print(f"{status} {item['name']}: {path}")
+            status_detail = item.get("status")
+            if status_detail:
+                print(f"{status} {item['name']} ({status_detail}): {path}")
+            else:
+                print(f"{status} {item['name']}: {path}")
             if item.get("error"):
                 print(f"  detail: {item['error']}")
+            if item.get("reason"):
+                print(f"  reason: {item['reason']}")
+            if item.get("target"):
+                print(f"  target: {item['target']}")
+            if item.get("mapped_project_root"):
+                print(f"  mapped_project_root: {item['mapped_project_root']}")
+            if item.get("suggestion"):
+                print(f"  action: {item['suggestion']}")
     return 0 if report["ok"] else 1
 
 
 def cmd_use(args: argparse.Namespace) -> int:
-    project_root = normalize_windows_path(args.project_root).expanduser()
-    try:
-        project_root = project_root.resolve()
-    except Exception:
-        project_root = project_root
+    project_root = _normalize_path(args.project_root)
+    if not _is_project_root(project_root):
+        print(
+            f"ERROR project_root: Not a webnovel project root (missing .webnovel/state.json): {project_root}",
+            file=sys.stderr,
+        )
+        return USE_EXIT_INVALID_PROJECT_ROOT
 
-    workspace_root: Optional[Path] = None
+    explicit_workspace_root: Optional[Path] = None
     if args.workspace_root:
-        workspace_root = normalize_windows_path(args.workspace_root).expanduser()
-        try:
-            workspace_root = workspace_root.resolve()
-        except Exception:
-            workspace_root = workspace_root
+        explicit_workspace_root = _normalize_path(args.workspace_root)
+    workspace_root = _resolve_workspace_root_for_binding(
+        project_root=project_root,
+        explicit_workspace_root=explicit_workspace_root,
+    )
 
-    # 1) 写入工作区指针（若工作区内存在 `.codex/` 或 `.claude/`）
-    pointer_file = write_current_project_pointer(project_root, workspace_root=workspace_root)
+    context_dir = _first_context_dir(workspace_root)
+    pointer_file: Optional[Path] = None
+    pointer_reason = ""
+    pointer_action = ""
+    if context_dir is None:
+        pointer_reason, pointer_action = _pointer_skip_detail(reason="context_dir_missing", workspace_root=workspace_root)
+    else:
+        try:
+            pointer_file = write_current_project_pointer(project_root, workspace_root=workspace_root)
+        except Exception:
+            pointer_file = None
+        if pointer_file is None:
+            pointer_reason, pointer_action = _pointer_skip_detail(reason="pointer_write_failed", workspace_root=workspace_root)
+
     if pointer_file is not None:
         print(f"workspace pointer: {pointer_file}")
     else:
-        print("workspace pointer: (skipped)")
+        if not pointer_reason:
+            pointer_reason, pointer_action = _pointer_skip_detail(
+                reason="workspace_root_unavailable",
+                workspace_root=workspace_root,
+            )
+        print(f"workspace pointer: (skipped: reason={pointer_reason}; action={pointer_action})")
 
-    # 2) 写入用户级 registry（保证全局安装/空上下文可恢复）
-    reg_path = update_global_registry_current_project(workspace_root=workspace_root, project_root=project_root)
+    try:
+        reg_path = update_global_registry_current_project(workspace_root=workspace_root, project_root=project_root)
+    except Exception as exc:
+        print(
+            f"global registry: (error: reason=write_failed:{type(exc).__name__}; "
+            "action=check registry path permissions and rerun)",
+            file=sys.stderr,
+        )
+        return USE_EXIT_REGISTRY_FAILED
+
     if reg_path is not None:
         print(f"global registry: {reg_path}")
-    else:
-        print("global registry: (skipped)")
+        return USE_EXIT_OK
 
-    return 0
+    print("global registry: (skipped: reason=workspace_root_unavailable; action=pass --workspace-root <workspace>)")
+    return USE_EXIT_REGISTRY_FAILED
 
 
 def cmd_dashboard(args: argparse.Namespace) -> int:

@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _ensure_scripts_on_path() -> None:
     scripts_dir = Path(__file__).resolve().parents[2]
@@ -82,3 +84,16 @@ def test_codex_migration_apply_moves_pointer_and_references(tmp_path):
     assert report["moved"]
     assert Path(report["report_path"]).is_file()
 
+
+def test_codex_migration_rejects_project_without_state_json(tmp_path):
+    _ensure_scripts_on_path()
+
+    from migrations.codex_migration import migrate_codex_runtime
+
+    invalid_root = (tmp_path / "workspace").resolve()
+    (invalid_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(FileNotFoundError) as exc:
+        migrate_codex_runtime(project_root=invalid_root, dry_run=True)
+
+    assert "missing .webnovel/state.json" in str(exc.value)
