@@ -1,0 +1,15 @@
+﻿C:\Users\wxy\Desktop
+C:\Users\wxy\Documents
+C:\Users\wxy\Downloads
+C:\Users\wxy\Music
+C:\Users\wxy\OneDrive
+C:\Users\wxy\Pictures
+C:\Users\wxy\source
+C:\Users\wxy\Videos
+D:\code\.pm2
+D:\code\.pm2dev
+D:\code\Antigravity
+D:\code\fanbianyi
+D:\code\prompt
+D:\code\review-analyzer
+D:\code\wh

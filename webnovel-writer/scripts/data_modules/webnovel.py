@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-webnovel 统一入口（面向 skills / agents 的稳定 CLI）
+webnovel 统一入口（面向 skills / agents / Codex 的稳定 CLI）
 
 设计目标：
 - 只有一个入口命令，避免到处拼 `python -m data_modules.xxx ...` 导致参数位置/引号/路径炸裂。
@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -89,7 +90,7 @@ def _run_data_module(module: str, argv: list[str]) -> int:
 
 def _run_script(script_name: str, argv: list[str]) -> int:
     """
-    Run a script under `.claude/scripts/` via a subprocess.
+    Run a script under `scripts/` via a subprocess.
 
     用途：兼容没有 main() 的脚本（例如 workflow_manager.py）。
     """
@@ -169,7 +170,7 @@ def cmd_use(args: argparse.Namespace) -> int:
         except Exception:
             workspace_root = workspace_root
 
-    # 1) 写入工作区指针（若工作区内存在 `.claude/`）
+    # 1) 写入工作区指针（若工作区内存在 `.codex/` 或 `.claude/`）
     pointer_file = write_current_project_pointer(project_root, workspace_root=workspace_root)
     if pointer_file is not None:
         print(f"workspace pointer: {pointer_file}")
@@ -184,6 +185,38 @@ def cmd_use(args: argparse.Namespace) -> int:
         print("global registry: (skipped)")
 
     return 0
+
+
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    """从统一 CLI 启动 Dashboard（适配 Codex/Claude 任意工作目录）。"""
+    project_root = _resolve_root(args.project_root)
+    plugin_root = _scripts_dir().parent
+
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    if existing_pythonpath:
+        env["PYTHONPATH"] = f"{plugin_root}{os.pathsep}{existing_pythonpath}"
+    else:
+        env["PYTHONPATH"] = str(plugin_root)
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "dashboard.server",
+        "--project-root",
+        str(project_root),
+        "--host",
+        str(args.host),
+        "--port",
+        str(args.port),
+    ]
+    if args.no_browser:
+        cmd.append("--no-browser")
+    if args.no_bootstrap_index:
+        cmd.append("--no-bootstrap-index")
+
+    proc = subprocess.run(cmd, cwd=str(plugin_root), env=env)
+    return int(proc.returncode or 0)
 
 
 def main() -> None:
@@ -203,6 +236,17 @@ def main() -> None:
     p_use.add_argument("project_root", help="书项目根目录（必须包含 .webnovel/state.json）")
     p_use.add_argument("--workspace-root", help="工作区根目录（可选；默认由运行环境推断）")
     p_use.set_defaults(func=cmd_use)
+
+    p_dashboard = sub.add_parser("dashboard", help="启动只读 Dashboard（自动解析 project_root）")
+    p_dashboard.add_argument("--host", default="127.0.0.1", help="监听地址")
+    p_dashboard.add_argument("--port", type=int, default=8765, help="监听端口")
+    p_dashboard.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    p_dashboard.add_argument(
+        "--no-bootstrap-index",
+        action="store_true",
+        help="不自动初始化缺失的 .webnovel/index.db",
+    )
+    p_dashboard.set_defaults(func=cmd_dashboard)
 
     # Pass-through to data modules
     p_index = sub.add_parser("index", help="转发到 index_manager")

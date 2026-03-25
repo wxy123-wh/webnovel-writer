@@ -17,15 +17,24 @@ Set-Location $ProjectRoot
 $tmpRoot = Join-Path $ProjectRoot ".tmp\\pytest"
 New-Item -ItemType Directory -Path $tmpRoot -Force | Out-Null
 
+$ScriptsDir = (Resolve-Path $PSScriptRoot).Path
+$TestsDir = Join-Path $ScriptsDir "data_modules\\tests"
+$BootstrapDir = Join-Path $ScriptsDir "test_bootstrap"
+
 $env:TMP = $tmpRoot
 $env:TEMP = $tmpRoot
-$env:PYTHONPATH = ".claude/scripts"
+$env:WEBNOVEL_TMPDIR_FIX = "1"
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
+$env:PYTHONPATH = "$BootstrapDir;$ScriptsDir"
 
 # 避免 Windows 下 basetemp 目录因权限/残留锁导致 rm_rf 失败（会让所有用例在 setup 阶段直接报错）。
 $runId = Get-Date -Format "yyyyMMdd_HHmmssfff"
 $baseTemp = Join-Path $tmpRoot ("run-" + $Mode + "-" + $runId)
 
 Write-Host "ProjectRoot: $ProjectRoot"
+Write-Host "ScriptsDir: $ScriptsDir"
+Write-Host "TestsDir: $TestsDir"
+Write-Host "BootstrapDir: $BootstrapDir"
 Write-Host "TMP/TEMP: $tmpRoot"
 Write-Host "Mode: $Mode"
 
@@ -54,16 +63,19 @@ if ($LASTEXITCODE -ne 0) {
 
 if ($Mode -eq "smoke") {
     python -m pytest -q `
-        .claude/scripts/data_modules/tests/test_extract_chapter_context.py `
-        .claude/scripts/data_modules/tests/test_rag_adapter.py `
+        (Join-Path $TestsDir "test_extract_chapter_context.py") `
+        (Join-Path $TestsDir "test_rag_adapter.py") `
+        -p pytest_asyncio.plugin `
+        -o addopts= `
         --basetemp $baseTemp `
-        --no-cov `
         -p no:cacheprovider
     exit $LASTEXITCODE
 }
 
 python -m pytest -q `
-    .claude/scripts/data_modules/tests `
+    $TestsDir `
+    -p pytest_asyncio.plugin `
+    -o addopts= `
     --basetemp $baseTemp `
     -p no:cacheprovider
 exit $LASTEXITCODE

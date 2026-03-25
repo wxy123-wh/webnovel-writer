@@ -17,14 +17,40 @@ from runtime_compat import normalize_windows_path
 
 from .context_weights import TEMPLATE_WEIGHTS_DYNAMIC_DEFAULT
 
-def _get_user_claude_root() -> Path:
-    raw = os.environ.get("WEBNOVEL_CLAUDE_HOME") or os.environ.get("CLAUDE_HOME")
-    if raw:
-        try:
-            return normalize_windows_path(raw).expanduser().resolve()
-        except Exception:
-            return normalize_windows_path(raw).expanduser()
-    return (Path.home() / ".claude").resolve()
+
+def _normalize_home(raw: str) -> Path:
+    try:
+        return normalize_windows_path(raw).expanduser().resolve()
+    except Exception:
+        return normalize_windows_path(raw).expanduser()
+
+
+def _iter_user_home_candidates() -> list[Path]:
+    homes: list[Path] = []
+    for key in (
+        "WEBNOVEL_HOME",
+        "WEBNOVEL_CODEX_HOME",
+        "WEBNOVEL_CLAUDE_HOME",
+        "CODEX_HOME",
+        "CLAUDE_HOME",
+    ):
+        raw = os.environ.get(key)
+        if raw:
+            homes.append(_normalize_home(raw))
+
+    # 默认优先 Codex，再兼容 Claude
+    homes.append((Path.home() / ".codex").resolve())
+    homes.append((Path.home() / ".claude").resolve())
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for home in homes:
+        key = os.path.normcase(str(home))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(home)
+    return deduped
 
 
 def _load_dotenv_file(env_path: Path, *, override: bool = False) -> bool:
@@ -54,14 +80,15 @@ def _load_dotenv():
 
     约定：
     - 项目级 `.env`（当前工作目录下）优先；
-    - 全局 `.env` 作为兜底：`~/.claude/webnovel-writer/.env`
+    - 全局 `.env` 作为兜底：`~/.codex/webnovel-writer/.env`（兼容 `~/.claude/...`）
     """
     # 1) 当前目录（常见：用户从项目根目录执行）
     _load_dotenv_file(Path.cwd() / ".env", override=False)
 
     # 2) 用户级全局（常见：skills/agents 全局安装，API key 放这里最省心）
-    global_env = _get_user_claude_root() / "webnovel-writer" / ".env"
-    _load_dotenv_file(global_env, override=False)
+    for home in _iter_user_home_candidates():
+        global_env = home / "webnovel-writer" / ".env"
+        _load_dotenv_file(global_env, override=False)
 
 
 def _load_project_dotenv(project_root: Path) -> None:
@@ -334,7 +361,7 @@ def get_config(project_root: Optional[Path] = None) -> DataModulesConfig:
         # 默认不要盲目以 CWD 作为 project_root（很容易写到错误目录）。
         # 使用统一的 project_locator 自动探测：
         # - 支持 WEBNOVEL_PROJECT_ROOT
-        # - 支持 `.claude/.webnovel-current-project` 指针文件
+        # - 支持 `.codex/.webnovel-current-project` / `.claude/...` 指针文件
         # - 支持从当前目录/父目录寻找 `.webnovel/state.json`
         from project_locator import resolve_project_root
 

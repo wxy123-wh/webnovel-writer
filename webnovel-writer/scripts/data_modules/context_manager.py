@@ -287,6 +287,21 @@ class ContextManager:
 
         return signal
 
+    def _read_shared_reference(self, filename: str) -> str:
+        """读取共享参考文件，优先项目内 context 目录，再回退到插件内置 references。"""
+        candidates = [
+            self.config.project_root / ".codex" / "references" / filename,
+            self.config.project_root / ".claude" / "references" / filename,
+            Path(__file__).resolve().parents[2] / "references" / filename,
+        ]
+        for path in candidates:
+            if path.exists():
+                try:
+                    return path.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+        return ""
+
     def _load_genre_profile(self, state: Dict[str, Any]) -> Dict[str, Any]:
         if not getattr(self.config, "context_genre_profile_enabled", True):
             return {}
@@ -304,11 +319,8 @@ class ContextManager:
         primary_genre = genres[0]
         secondary_genres = genres[1:]
         composite = len(genres) > 1
-        profile_path = self.config.project_root / ".claude" / "references" / "genre-profiles.md"
-        taxonomy_path = self.config.project_root / ".claude" / "references" / "reading-power-taxonomy.md"
-
-        profile_text = profile_path.read_text(encoding="utf-8") if profile_path.exists() else ""
-        taxonomy_text = taxonomy_path.read_text(encoding="utf-8") if taxonomy_path.exists() else ""
+        profile_text = self._read_shared_reference("genre-profiles.md")
+        taxonomy_text = self._read_shared_reference("reading-power-taxonomy.md")
 
         profile_excerpt = self._extract_genre_section(profile_text, primary_genre)
         taxonomy_excerpt = self._extract_genre_section(taxonomy_text, primary_genre)

@@ -9,8 +9,8 @@ webnovel 统一入口脚本（无须 `cd`）
   python "<SCRIPTS_DIR>/webnovel.py" index stats
 
 说明：
-- 该脚本仅负责把 `.claude/scripts` 加入 sys.path，然后转发到 `data_modules.webnovel`。
-- 适配 skills/agents 在项目级或用户级（~/.claude）安装时的调用方式。
+- 该脚本仅负责把 `scripts/` 加入 sys.path，然后转发到 `data_modules.webnovel`。
+- 适配 skills/agents 在项目级或用户级（~/.codex / ~/.claude）安装时的调用方式。
 """
 
 from __future__ import annotations

@@ -7,6 +7,8 @@
 - [RAG 与配置](#rag-与配置)
 - [题材模板](#题材模板)
 - [运维与恢复](#运维与恢复)
+- [Codex 使用](#codex-使用)
+- [需求与实施](#需求与实施)
 
 ## 架构与模块
 
@@ -28,8 +30,19 @@
 
 - `operations.md`：项目结构与故障恢复/运维手册
 
+## Codex 使用
+
+- `codex.md`：Codex 本地仓库模式下的初始化、指针绑定与常用 CLI
+
+## 需求与实施
+
+- `srs-codex-exclusive-rebuild.md`：Codex 专属改造与双纲协作工作台需求规格说明书（SRS）
+- `codex-exclusive-implementation-plan.md`：基于 SRS 的实施计划与里程碑任务分解
+- `openspec-execution-plan.md`：面向 Codex 子代理并行执行的 OpenSpec 规范执行计划（模块/接口/技术/验收）
+
 建议阅读顺序：
 
 1. 先看 `../README.md`（安装与上手）
-2. 再看 `architecture.md`（理解系统设计）
-3. 最后按需查阅命令和运维文档
+2. 再看 `srs-codex-exclusive-rebuild.md`（确认目标需求）
+3. 再看 `codex-exclusive-implementation-plan.md`（按任务推进）
+4. 最后按需查阅架构、命令和运维文档

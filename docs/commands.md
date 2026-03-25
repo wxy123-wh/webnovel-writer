@@ -1,5 +1,9 @@
 # 命令详解
 
+> 说明：本文档以 Claude Slash 命令展示流程。在 Codex 中请使用统一 CLI：
+>
+> `python -X utf8 webnovel-writer/scripts/webnovel.py <tool> ...`
+
 ## `/webnovel-init`
 
 用途：初始化小说项目（目录、设定模板、状态文件）。

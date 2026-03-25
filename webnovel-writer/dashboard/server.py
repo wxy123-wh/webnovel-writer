@@ -3,18 +3,19 @@ Dashboard 启动脚本
 
 用法：
     python -m dashboard.server --project-root /path/to/novel-project
-    python -m dashboard.server                   # 自动从 .claude 指针读取
+    python -m dashboard.server                   # 自动从 .codex/.claude 指针读取
 """
 
 import argparse
 import os
+import subprocess
 import sys
 import webbrowser
 from pathlib import Path
 
 
 def _resolve_project_root(cli_root: str | None) -> Path:
-    """按优先级解析 PROJECT_ROOT：CLI > 环境变量 > .claude 指针 > CWD。"""
+    """按优先级解析 PROJECT_ROOT：CLI > 环境变量 > context 指针 > CWD。"""
     if cli_root:
         return Path(cli_root).resolve()
 
@@ -22,10 +23,12 @@ def _resolve_project_root(cli_root: str | None) -> Path:
     if env:
         return Path(env).resolve()
 
-    # 尝试从 .claude 指针读取
+    # 尝试从 .codex / .claude 指针读取
     cwd = Path.cwd()
-    pointer = cwd / ".claude" / ".webnovel-current-project"
-    if pointer.is_file():
+    for dirname in (".codex", ".claude"):
+        pointer = cwd / dirname / ".webnovel-current-project"
+        if not pointer.is_file():
+            continue
         target = pointer.read_text(encoding="utf-8").strip()
         if target:
             p = Path(target)
@@ -40,16 +43,58 @@ def _resolve_project_root(cli_root: str | None) -> Path:
     sys.exit(1)
 
 
+def _bootstrap_index_if_needed(project_root: Path) -> None:
+    """缺失 index.db 时，调用统一 CLI 进行一次最小初始化（index stats）。"""
+    index_db = project_root / ".webnovel" / "index.db"
+    if index_db.is_file():
+        return
+
+    scripts_entry = Path(__file__).resolve().parents[1] / "scripts" / "webnovel.py"
+    if not scripts_entry.is_file():
+        print(
+            f"WARNING: 未找到统一 CLI 入口，无法自动初始化 index.db: {scripts_entry}",
+            file=sys.stderr,
+        )
+        return
+
+    cmd = [
+        sys.executable,
+        "-X",
+        "utf8",
+        str(scripts_entry),
+        "--project-root",
+        str(project_root),
+        "index",
+        "stats",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode == 0 and index_db.is_file():
+        print("检测到缺失 index.db，已自动初始化。")
+        return
+
+    stderr_tail = (proc.stderr or "").strip()
+    stdout_tail = (proc.stdout or "").strip()
+    detail = stderr_tail or stdout_tail or f"exit_code={proc.returncode}"
+    print(f"WARNING: 自动初始化 index.db 失败：{detail}", file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Webnovel Dashboard Server")
     parser.add_argument("--project-root", type=str, default=None, help="小说项目根目录")
     parser.add_argument("--host", default="127.0.0.1", help="监听地址")
     parser.add_argument("--port", type=int, default=8765, help="监听端口")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    parser.add_argument(
+        "--no-bootstrap-index",
+        action="store_true",
+        help="不自动初始化缺失的 .webnovel/index.db",
+    )
     args = parser.parse_args()
 
     project_root = _resolve_project_root(args.project_root)
     print(f"项目路径: {project_root}")
+    if not args.no_bootstrap_index:
+        _bootstrap_index_if_needed(project_root)
 
     # 延迟导入，以便先处理路径
     import uvicorn

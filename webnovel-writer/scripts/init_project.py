@@ -263,8 +263,8 @@ def init_project(
     cultivation_subtiers: str = "",
 ) -> None:
     project_path = Path(project_dir).expanduser().resolve()
-    if ".claude" in project_path.parts:
-        raise SystemExit("Refusing to initialize a project inside .claude. Choose a different directory.")
+    if any(part in {".claude", ".codex"} for part in project_path.parts):
+        raise SystemExit("Refusing to initialize a project inside .claude/.codex. Choose a different directory.")
     project_path.mkdir(parents=True, exist_ok=True)
 
     # 目录结构（同时兼容“卷目录”与后续扩展）

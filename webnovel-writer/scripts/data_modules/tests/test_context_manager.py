@@ -488,6 +488,47 @@ def test_context_manager_genre_aliases_normalized_for_profile_lookup(temp_projec
     assert "直播文" in (profile.get("genres") or [])
 
 
+def test_context_manager_prefers_codex_references_over_claude(temp_project):
+    codex_refs = temp_project.project_root / ".codex" / "references"
+    codex_refs.mkdir(parents=True, exist_ok=True)
+    (codex_refs / "genre-profiles.md").write_text(
+        """
+## xuanhuan
+- 来自 codex
+""".strip(),
+        encoding="utf-8",
+    )
+    (codex_refs / "reading-power-taxonomy.md").write_text(
+        """
+## xuanhuan
+- codex 钩子
+""".strip(),
+        encoding="utf-8",
+    )
+
+    claude_refs = temp_project.project_root / ".claude" / "references"
+    claude_refs.mkdir(parents=True, exist_ok=True)
+    (claude_refs / "genre-profiles.md").write_text(
+        """
+## xuanhuan
+- 来自 claude
+""".strip(),
+        encoding="utf-8",
+    )
+    (claude_refs / "reading-power-taxonomy.md").write_text(
+        """
+## xuanhuan
+- claude 钩子
+""".strip(),
+        encoding="utf-8",
+    )
+
+    manager = ContextManager(temp_project)
+    profile = manager._load_genre_profile({"project": {"genre": "xuanhuan"}})
+    assert "来自 codex" in profile.get("profile_excerpt", "")
+    assert "codex 钩子" in profile.get("taxonomy_excerpt", "")
+
+
 def test_context_manager_enables_methodology_for_xianxia(temp_project):
     state = {
         "project": {"genre": "修仙"},

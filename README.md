@@ -7,7 +7,7 @@
 <a href="https://trendshift.io/repositories/22487" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22487" alt="lingfengQAQ%2Fwebnovel-writer | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 ## 项目简单介绍
 
-`Webnovel Writer` 是基于 Claude Code 的长篇网文创作系统，目标是降低 AI 写作中的“遗忘”和“幻觉”，支持长周期连载创作。
+`Webnovel Writer` 是面向 Claude Code / Codex 的长篇网文创作系统，目标是降低 AI 写作中的“遗忘”和“幻觉”，支持长周期连载创作。
 
 详细文档已拆分到 `docs/`：
 
@@ -16,11 +16,63 @@
 - RAG 与配置：`docs/rag-and-config.md`
 - 题材模板：`docs/genres.md`
 - 运维与恢复：`docs/operations.md`
+- Codex 使用：`docs/codex.md`
+- 需求规格（SRS）：`docs/srs-codex-exclusive-rebuild.md`
+- 实施计划：`docs/codex-exclusive-implementation-plan.md`
 - 文档导航：`docs/README.md`
 
 ## 快速开始
 
-### 1) 安装插件（官方 Marketplace）
+### A) Codex 本地仓库模式（推荐）
+
+#### 1) 安装 Python 依赖
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+#### 2) 初始化小说项目
+
+```bash
+python -X utf8 webnovel-writer/scripts/webnovel.py init ./webnovel-project "你的书名" "题材"
+```
+
+#### 3) 绑定当前工作区（可选但建议）
+
+```bash
+python -X utf8 webnovel-writer/scripts/webnovel.py use "<PROJECT_ROOT>" --workspace-root "<WORKSPACE_ROOT>"
+```
+
+说明：
+- 优先写入 `workspace/.codex/.webnovel-current-project`；
+- 若工作区没有 `.codex/` 但有 `.claude/`，会自动回退；
+- 同时写入用户级 registry（默认 `~/.codex/webnovel-writer/workspaces.json`，兼容 `~/.claude/...`）。
+
+#### 4) 运行预检
+
+```bash
+python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<WORKSPACE_ROOT_OR_PROJECT_ROOT>" preflight
+```
+
+#### 5) 常用 CLI
+
+```bash
+python -X utf8 webnovel-writer/scripts/webnovel.py where
+python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<WORKSPACE_ROOT_OR_PROJECT_ROOT>" extract-context --chapter 1 --format text
+python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<WORKSPACE_ROOT_OR_PROJECT_ROOT>" status -- --focus all
+```
+
+#### 6) 启动 Dashboard（可选）
+
+```bash
+python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<WORKSPACE_ROOT_OR_PROJECT_ROOT>" dashboard
+```
+
+说明：
+- 通过统一 CLI 启动可避免手动 `cd` 与 `PYTHONPATH` 问题；
+- 若 `.webnovel/index.db` 不存在，会自动执行一次轻量初始化（等价 `index stats`）。
+
+### B) Claude Code 插件模式（官方 Marketplace）
 
 ```bash
 claude plugin marketplace add lingfengQAQ/webnovel-writer --scope user
@@ -29,7 +81,7 @@ claude plugin install webnovel-writer@webnovel-writer-marketplace --scope user
 
 > 仅当前项目生效时，将 `--scope user` 改为 `--scope project`。
 
-### 2) 安装 Python 依赖
+### C) 插件模式下的依赖安装
 
 ```bash
 python -m pip install -r https://raw.githubusercontent.com/lingfengQAQ/webnovel-writer/HEAD/requirements.txt
@@ -37,7 +89,7 @@ python -m pip install -r https://raw.githubusercontent.com/lingfengQAQ/webnovel-
 
 说明：该入口会同时安装核心写作链路与 Dashboard 依赖。
 
-### 3) 初始化小说项目
+### D) 插件模式初始化小说项目
 
 在 Claude Code 中执行：
 
@@ -45,9 +97,9 @@ python -m pip install -r https://raw.githubusercontent.com/lingfengQAQ/webnovel-
 /webnovel-init
 ```
 
-说明：`/webnovel-init` 会在当前 Workspace 下按书名创建 `PROJECT_ROOT`（子目录），并在 `workspace/.claude/.webnovel-current-project` 写入当前项目指针。
+说明：`/webnovel-init` 会在当前 Workspace 下按书名创建 `PROJECT_ROOT`（子目录），并在工作区 context 指针（`.codex` 或 `.claude`）写入当前项目绑定。
 
-### 4) 配置 RAG 环境（必做）
+### E) 配置 RAG 环境（必做）
 
 进入初始化后的书项目根目录，创建 `.env`：
 
@@ -67,7 +119,7 @@ RERANK_MODEL=jina-reranker-v3
 RERANK_API_KEY=your_rerank_api_key
 ```
 
-### 5) 开始使用
+### F) 插件模式开始使用
 
 ```bash
 /webnovel-plan 1
@@ -81,7 +133,7 @@ RERANK_API_KEY=your_rerank_api_key
 python -X utf8 "<CLAUDE_PLUGIN_ROOT>/scripts/webnovel.py" --project-root "<WORKSPACE_ROOT>" preflight
 ```
 
-### 6) 启动可视化面板（可选）
+### G) 插件模式启动可视化面板（可选）
 
 ```bash
 /webnovel-dashboard
@@ -91,7 +143,7 @@ python -X utf8 "<CLAUDE_PLUGIN_ROOT>/scripts/webnovel.py" --project-root "<WORKS
 - Dashboard 为只读面板（项目状态、实体图谱、章节/大纲浏览、追读力查看）。
 - 前端构建产物已随插件发布，使用者无需本地 `npm build`。
 
-### 7) Agent 模型设置（可选）
+### H) Agent 模型设置（可选）
 
 本项目所有内置 Agent 默认配置为：
 
