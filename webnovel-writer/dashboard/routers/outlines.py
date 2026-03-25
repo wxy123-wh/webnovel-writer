@@ -25,11 +25,39 @@ from ..services.split import SplitService, SplitServiceError
 from ..services.split.resplit import ResplitService
 
 WRITE_ERROR_RESPONSES = {
-    400: {"model": ApiErrorResponse, "description": "Bad request placeholder response."},
-    403: {"model": ApiErrorResponse, "description": "Workspace access denied placeholder response."},
-    404: {"model": ApiErrorResponse, "description": "Resource not found placeholder response."},
-    409: {"model": ApiErrorResponse, "description": "Conflict placeholder response."},
-    500: {"model": ApiErrorResponse, "description": "Internal error placeholder response."},
+    400: {
+        "model": ApiErrorResponse,
+        "description": (
+            "Invalid request. Typical error_code: "
+            "OUTLINE_PROJECT_ROOT_REQUIRED, OUTLINE_INVALID_SELECTION_RANGE, OUTLINE_SELECTION_OUT_OF_RANGE."
+        ),
+    },
+    403: {
+        "model": ApiErrorResponse,
+        "description": "Workspace access denied.",
+    },
+    404: {
+        "model": ApiErrorResponse,
+        "description": (
+            "Resource missing. Typical error_code: "
+            "OUTLINE_PROJECT_ROOT_NOT_FOUND, OUTLINE_TOTAL_FILE_NOT_FOUND."
+        ),
+    },
+    409: {
+        "model": ApiErrorResponse,
+        "description": (
+            "Write conflict or lock timeout. Typical error_code: "
+            "OUTLINE_SPLIT_LOCK_TIMEOUT, OUTLINE_RESPLIT_LOCK_TIMEOUT, "
+            "OUTLINE_RESPLIT_NO_OVERLAP, OUTLINE_ORDER_CONFLICT."
+        ),
+    },
+    500: {
+        "model": ApiErrorResponse,
+        "description": (
+            "Internal persistence failure. Typical error_code: "
+            "OUTLINE_SPLIT_WRITE_FAILED, OUTLINE_RESPLIT_WRITE_FAILED."
+        ),
+    },
 }
 
 router = APIRouter(prefix="/api/outlines", tags=["outlines"])

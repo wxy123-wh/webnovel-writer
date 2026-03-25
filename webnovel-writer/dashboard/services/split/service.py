@@ -23,6 +23,7 @@ from ...models.outlines import (
     OutlineAnchor,
     OutlineBundleQuery,
     OutlineBundleResponse,
+    OutlineIdempotencyInfo,
     OutlineSegment,
     OutlineSplitApplyRequest,
     OutlineSplitApplyResponse,
@@ -450,7 +451,15 @@ class SplitService:
                 if isinstance(existing_split_id, str):
                     for record in split_map.get("records", []):
                         if isinstance(record, dict) and record.get("id") == existing_split_id:
-                            return OutlineSplitApplyResponse(status="ok", record=_record_to_model(record))
+                            return OutlineSplitApplyResponse(
+                                status="ok",
+                                record=_record_to_model(record),
+                                idempotency=OutlineIdempotencyInfo(
+                                    key=token,
+                                    status="replayed",
+                                    note="命中幂等键，返回既有 split 结果，未重复写入。",
+                                ),
+                            )
 
                 paragraphs = _normalize_paragraphs(selected_text)
                 start_order_index = _next_order_index(detailed_segments)
@@ -497,7 +506,15 @@ class SplitService:
                 _atomic_write_text(detailed_outline_path, _render_detailed_outline(all_entries))
                 _atomic_write_json(split_map_path, split_map)
 
-                return OutlineSplitApplyResponse(status="ok", record=record)
+                return OutlineSplitApplyResponse(
+                    status="ok",
+                    record=record,
+                    idempotency=OutlineIdempotencyInfo(
+                        key=token,
+                        status="created",
+                        note="首次写入成功，已持久化 split 结果。",
+                    ),
+                )
         except Timeout as exc:
             raise SplitServiceError(
                 status_code=409,

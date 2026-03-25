@@ -15,6 +15,7 @@ from uuid import uuid4
 from filelock import FileLock, Timeout
 
 from ...models.outlines import (
+    OutlineIdempotencyInfo,
     OutlineOrderValidateRequest,
     OutlineOrderValidateResponse,
     OutlineResplitApplyRequest,
@@ -335,7 +336,15 @@ class ResplitService:
                 if isinstance(existing_split_id, str):
                     for payload in raw_records:
                         if str(payload.get("id", "")) == existing_split_id:
-                            return OutlineResplitApplyResponse(status="ok", record=_record_to_model(payload))
+                            return OutlineResplitApplyResponse(
+                                status="ok",
+                                record=_record_to_model(payload),
+                                idempotency=OutlineIdempotencyInfo(
+                                    key=token,
+                                    status="replayed",
+                                    note="命中幂等键，返回既有 resplit 结果，未重复写入。",
+                                ),
+                            )
 
                 records = [_record_to_model(payload) for payload in raw_records]
                 overlap_state = _find_overlap_state(records, rollback_start, rollback_end)
@@ -463,7 +472,15 @@ class ResplitService:
                 _atomic_write_text(detailed_outline_path, _render_detailed_outline(merged_entries))
                 _atomic_write_json(split_map_path, split_map)
 
-                return OutlineResplitApplyResponse(status="ok", record=record)
+                return OutlineResplitApplyResponse(
+                    status="ok",
+                    record=record,
+                    idempotency=OutlineIdempotencyInfo(
+                        key=token,
+                        status="created",
+                        note="首次写入成功，已持久化 resplit 结果。",
+                    ),
+                )
         except Timeout as exc:
             raise SplitServiceError(
                 status_code=409,

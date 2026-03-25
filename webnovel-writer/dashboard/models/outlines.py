@@ -4,6 +4,8 @@ Outlines API placeholder models.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from .common import WorkspaceContext
@@ -29,6 +31,12 @@ class OutlineSplitRecord(BaseModel):
     created_at: str = Field(default="1970-01-01T00:00:00Z")
     segments: list[OutlineSegment] = Field(default_factory=list)
     anchors: list[OutlineAnchor] = Field(default_factory=list)
+
+
+class OutlineIdempotencyInfo(BaseModel):
+    key: str = Field(default="")
+    status: Literal["created", "replayed"] = Field(default="created")
+    note: str = Field(default="created=首次写入；replayed=命中幂等键后返回既有记录。")
 
 
 class OutlineRollbackPlan(BaseModel):
@@ -73,6 +81,7 @@ class OutlineSplitApplyRequest(BaseModel):
 class OutlineSplitApplyResponse(BaseModel):
     status: str = Field(default="placeholder")
     record: OutlineSplitRecord = Field(default_factory=OutlineSplitRecord)
+    idempotency: OutlineIdempotencyInfo = Field(default_factory=OutlineIdempotencyInfo)
 
 
 class OutlineSplitHistoryQuery(BaseModel):
@@ -109,6 +118,7 @@ class OutlineResplitApplyRequest(BaseModel):
 class OutlineResplitApplyResponse(BaseModel):
     status: str = Field(default="placeholder")
     record: OutlineSplitRecord = Field(default_factory=OutlineSplitRecord)
+    idempotency: OutlineIdempotencyInfo = Field(default_factory=OutlineIdempotencyInfo)
 
 
 class OutlineOrderValidateRequest(BaseModel):
