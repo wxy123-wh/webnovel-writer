@@ -77,7 +77,7 @@ export default function App() {
                 <aside className="sidebar">
                     <div className="sidebar-header">
                         <h1>PIXEL WRITER HUB</h1>
-                        <div className="subtitle">Frontend Core Skeleton</div>
+                        <div className="subtitle">Frontend Dashboard</div>
                     </div>
 
                     <nav className="sidebar-nav">
