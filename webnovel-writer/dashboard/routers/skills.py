@@ -212,6 +212,10 @@ def list_skill_audit(request: Request, query: SkillAuditQuery = Depends()):
             runtime_project_root=runtime_root,
             workspace_id=query.workspace_id,
             workspace_project_root=query.project_root,
+            action=query.action,
+            actor=query.actor,
+            start_time=query.start_time,
+            end_time=query.end_time,
             limit=query.limit,
             offset=query.offset,
         )

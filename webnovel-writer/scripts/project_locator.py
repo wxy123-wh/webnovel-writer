@@ -30,7 +30,8 @@ LEGACY_CURRENT_PROJECT_POINTER_REL: Path = Path(".claude") / CURRENT_PROJECT_POI
 
 # 用户级全局映射（当 skills/agents 安装在 ~/.codex / ~/.claude 时，项目目录可能在任意盘符）
 # 该文件用于在“空上下文 + CWD 不在项目内”的情况下仍能定位到正确 project_root。
-GLOBAL_REGISTRY_REL: Path = Path("webnovel-writer") / "workspaces.json"
+GLOBAL_REGISTRY_REL: Path = Path("webnovel-writer") / "registry.json"
+LEGACY_GLOBAL_REGISTRY_REL: Path = Path("webnovel-writer") / "workspaces.json"
 
 # 工作区与用户目录常见环境变量（存在时优先作为“工作区根目录”提示）
 ENV_CODEX_PROJECT_DIR = "CODEX_PROJECT_DIR"
@@ -105,15 +106,29 @@ def _iter_user_home_candidates() -> list[Path]:
 
 
 def _global_registry_paths() -> list[Path]:
-    return [home / GLOBAL_REGISTRY_REL for home in _iter_user_home_candidates()]
+    paths: list[Path] = []
+    for home in _iter_user_home_candidates():
+        paths.append(home / GLOBAL_REGISTRY_REL)
+        paths.append(home / LEGACY_GLOBAL_REGISTRY_REL)
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = _normcase_path_key(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return deduped
+
+
+def _global_registry_write_path() -> Path:
+    homes = _iter_user_home_candidates()
+    return homes[0] / GLOBAL_REGISTRY_REL
 
 
 def _global_registry_path() -> Path:
-    candidates = _global_registry_paths()
-    for path in candidates:
-        if path.is_file():
-            return path
-    return candidates[0]
+    return _global_registry_write_path()
 
 
 def _default_registry() -> dict:
@@ -144,6 +159,22 @@ def _load_global_registry(path: Path) -> dict:
     if not isinstance(data.get("updated_at"), str):
         data["updated_at"] = _now_iso()
     return data
+
+
+def _load_global_registry_for_update(write_path: Path) -> dict:
+    """
+    Load data for update:
+    - Prefer current write path.
+    - If write path does not exist, bootstrap from any existing compatible registry file.
+    """
+    if write_path.is_file():
+        return _load_global_registry(write_path)
+    for path in _global_registry_paths():
+        if _normcase_path_key(path) == _normcase_path_key(write_path):
+            continue
+        if path.is_file():
+            return _load_global_registry(path)
+    return _default_registry()
 
 
 def _save_global_registry(path: Path, data: dict) -> None:
@@ -264,7 +295,7 @@ def update_global_registry_current_project(
         ws = ws.expanduser()
 
     reg_path = _global_registry_path()
-    reg = _load_global_registry(reg_path)
+    reg = _load_global_registry_for_update(reg_path)
     workspaces = reg.get("workspaces")
     if not isinstance(workspaces, dict):
         workspaces = {}
@@ -294,8 +325,7 @@ def _candidate_roots(cwd: Path, *, stop_at: Optional[Path] = None) -> Iterable[P
 
 
 def _is_project_root(path: Path) -> bool:
-    webnovel_dir = path / ".webnovel"
-    return (webnovel_dir / "state.json").is_file() or webnovel_dir.is_dir()
+    return (path / ".webnovel" / "state.json").is_file()
 
 
 def _pointer_rel_candidates() -> tuple[Path, ...]:
@@ -411,6 +441,11 @@ def resolve_project_root(explicit_project_root: Optional[str] = None, *, cwd: Op
         root = normalize_windows_path(explicit_project_root).expanduser().resolve()
         if _is_project_root(root):
             return root
+
+        # 显式给定目录已存在 `.webnovel/` 但缺少 state.json 时，应直接失败，
+        # 避免误回退到 pointer/registry 并绑定到“其他项目”。
+        if (root / ".webnovel").exists():
+            raise FileNotFoundError(f"Not a webnovel project root (missing .webnovel/state.json): {root}")
 
         # 兼容：显式传入“工作区根目录”（含 `.codex/.webnovel-current-project` 或 `.claude/...` 指针）
         # 例如：D:\wk\xiaoshuo 不是项目根，但其指针指向 D:\wk\xiaoshuo\<书名>

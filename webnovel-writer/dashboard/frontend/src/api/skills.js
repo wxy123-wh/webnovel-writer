@@ -3,17 +3,53 @@ const DEFAULT_WORKSPACE_ID = 'workspace-default'
 const WORKSPACE_ID_STORAGE_KEY = 'webnovel.workspace_id'
 const PROJECT_ROOT_STORAGE_KEY = 'webnovel.project_root'
 
+function inferErrorType({ status = 0, errorCode = '' } = {}) {
+    const normalizedCode = String(errorCode || '').toLowerCase()
+    if (status === 0 || normalizedCode === 'skills_network_error') {
+        return 'network'
+    }
+    if (
+        status === 401 ||
+        status === 403 ||
+        normalizedCode === 'workspace_mismatch' ||
+        normalizedCode.includes('permission')
+    ) {
+        return 'permission'
+    }
+    if (status === 409 || normalizedCode.includes('conflict')) {
+        return 'conflict'
+    }
+    if (status === 400 || normalizedCode.includes('invalid')) {
+        return 'validation'
+    }
+    if (status >= 500) {
+        return 'server'
+    }
+    return 'api'
+}
+
 export class SkillsApiError extends Error {
     constructor(
         message,
-        { status = 0, errorCode = 'skills_api_error', details = null } = {},
+        { status = 0, errorCode = 'skills_api_error', errorType = null, details = null } = {},
     ) {
         super(message)
         this.name = 'SkillsApiError'
         this.status = status
         this.errorCode = errorCode
+        this.errorType = errorType || inferErrorType({ status, errorCode })
         this.details = details
     }
+}
+
+export function classifySkillsError(error) {
+    if (error instanceof SkillsApiError) {
+        return error.errorType
+    }
+
+    const status = Number.isFinite(error?.status) ? Number(error.status) : 0
+    const errorCode = String(error?.errorCode || error?.error_code || '')
+    return inferErrorType({ status, errorCode })
 }
 
 function normalizeWorkspaceContext(options = {}) {
@@ -75,6 +111,7 @@ async function requestJSON(path, { method = 'GET', query, body } = {}) {
         throw new SkillsApiError('Failed to connect to skills service.', {
             status: 0,
             errorCode: 'skills_network_error',
+            errorType: 'network',
             details: { error: String(error) },
         })
     }
@@ -91,9 +128,11 @@ async function requestJSON(path, { method = 'GET', query, body } = {}) {
 
     if (!response.ok) {
         const fallbackMessage = `${response.status} ${response.statusText}`
+        const resolvedCode = payload?.error_code || 'skills_api_error'
         throw new SkillsApiError(payload?.message || fallbackMessage, {
             status: response.status,
-            errorCode: payload?.error_code || 'skills_api_error',
+            errorCode: resolvedCode,
+            errorType: inferErrorType({ status: response.status, errorCode: resolvedCode }),
             details: payload?.details ?? payload ?? null,
         })
     }

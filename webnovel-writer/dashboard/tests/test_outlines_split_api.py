@@ -72,6 +72,8 @@ def test_split_preview_apply_and_history_persistence():
         assert apply_resp.status_code == 200
         apply_body = apply_resp.json()
         assert apply_body["status"] == "ok"
+        assert apply_body["idempotency"]["status"] == "created"
+        assert apply_body["idempotency"]["key"] == "apply-key-1"
         split_record = apply_body["record"]
 
         split_map_path = project_root / ".webnovel" / "outlines" / "split-map.json"
@@ -130,7 +132,12 @@ def test_split_apply_is_idempotent_with_same_key():
         second_resp = client.post("/api/outlines/split/apply", json=apply_payload)
         assert first_resp.status_code == 200
         assert second_resp.status_code == 200
-        assert first_resp.json()["record"]["id"] == second_resp.json()["record"]["id"]
+        first_body = first_resp.json()
+        second_body = second_resp.json()
+        assert first_body["record"]["id"] == second_body["record"]["id"]
+        assert first_body["idempotency"]["status"] == "created"
+        assert second_body["idempotency"]["status"] == "replayed"
+        assert second_body["idempotency"]["key"] == "duplicate-key"
 
         split_map_path = project_root / ".webnovel" / "outlines" / "split-map.json"
         split_map = json.loads(split_map_path.read_text(encoding="utf-8"))
@@ -142,6 +149,27 @@ def test_split_apply_is_idempotent_with_same_key():
             for line in detailed_segments_path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
-        assert len(entries) == len(first_resp.json()["record"]["segments"])
+        assert len(entries) == len(first_body["record"]["segments"])
+    finally:
+        shutil.rmtree(project_root, ignore_errors=True)
+
+
+def test_split_preview_returns_structured_error_code_on_invalid_range():
+    project_root = _new_temp_project_root()
+    try:
+        client, _ = _bootstrap_project(project_root)
+        preview_resp = client.post(
+            "/api/outlines/split/preview",
+            json={
+                "workspace": _workspace_payload(project_root),
+                "selection_start": 8,
+                "selection_end": 8,
+                "selection_text": "",
+            },
+        )
+        assert preview_resp.status_code == 400
+        detail = preview_resp.json()["detail"]
+        assert detail["error_code"] == "OUTLINE_INVALID_SELECTION_RANGE"
+        assert detail["message"] == "selection_end must be greater than selection_start"
     finally:
         shutil.rmtree(project_root, ignore_errors=True)

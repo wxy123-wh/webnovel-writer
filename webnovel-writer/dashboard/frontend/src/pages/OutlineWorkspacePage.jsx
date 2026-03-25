@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PageScaffold from '../components/PageScaffold.jsx'
+import ResplitDialog from '../components/ResplitDialog.jsx'
 import { useContextMenu } from '../components/ContextMenuProvider.jsx'
 import {
     applyOutlineSplit,
+    createOutlineWorkspace,
     fetchOutlineBundle,
     fetchOutlineSplitHistory,
+    formatOutlineApiError,
     previewOutlineSplit,
 } from '../api/outlines.js'
+
+const EDIT_ASSIST_TARGET_FILE = '大纲/总纲.md'
+const EDIT_ASSIST_DEFAULT_PROMPT = '请在不改变关键信息的前提下提升叙事节奏和冲突张力。'
 
 const DUAL_LAYOUT_STYLE = {
     display: 'grid',
@@ -68,86 +74,203 @@ function buildIdempotencyKey(selectionStart, selectionEnd, selectionText) {
     return `fe-${selectionStart}-${selectionEnd}-${textHash}`
 }
 
+function hasValidSelection(selection) {
+    if (!selection || typeof selection !== 'object') {
+        return false
+    }
+    if (selection.selectionEnd <= selection.selectionStart) {
+        return false
+    }
+    return Boolean(selection.selectionText)
+}
+
+async function requestEditAssistPreview({ workspace, selection, signal }) {
+    const response = await fetch('/api/edit-assist/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            workspace,
+            file_path: EDIT_ASSIST_TARGET_FILE,
+            selection_start: Math.max(0, selection.selectionStart),
+            selection_end: Math.max(0, selection.selectionEnd),
+            selection_text: selection.selectionText || '',
+            prompt: EDIT_ASSIST_DEFAULT_PROMPT,
+        }),
+        signal,
+    })
+
+    const rawText = await response.text()
+    let payload = {}
+    if (rawText) {
+        try {
+            payload = JSON.parse(rawText)
+        } catch {
+            payload = { message: rawText }
+        }
+    }
+
+    if (!response.ok) {
+        const detail = payload?.detail || payload
+        const error = new Error(detail?.message || `${response.status} ${response.statusText}`)
+        error.status = response.status
+        error.errorCode = detail?.error_code || 'api_request_failed'
+        error.details = detail?.details || null
+        throw error
+    }
+
+    return payload
+}
+
 export default function OutlineWorkspacePage() {
     const { openForEvent } = useContextMenu()
     const masterRef = useRef(null)
+    const lastMasterSelectionRef = useRef({ selectionStart: 0, selectionEnd: 0, selectionText: '' })
+    const workspace = useMemo(() => createOutlineWorkspace(), [])
 
     const [lastAction, setLastAction] = useState('尚未触发')
+    const [errorMessage, setErrorMessage] = useState('')
     const [totalOutline, setTotalOutline] = useState('')
     const [detailedOutline, setDetailedOutline] = useState('')
     const [previewSegments, setPreviewSegments] = useState([])
     const [splitHistory, setSplitHistory] = useState([])
+    const [assistPreview, setAssistPreview] = useState(null)
     const [loadingBundle, setLoadingBundle] = useState(true)
     const [splitting, setSplitting] = useState(false)
-    const [modeTag, setModeTag] = useState('api')
+    const [assisting, setAssisting] = useState(false)
+    const [resplitDialogOpen, setResplitDialogOpen] = useState(false)
+    const [resplitSelection, setResplitSelection] = useState({
+        selectionStart: 0,
+        selectionEnd: 0,
+    })
 
     const refreshBundle = useCallback(async () => {
         setLoadingBundle(true)
-        const bundle = await fetchOutlineBundle()
-        setTotalOutline(bundle.total_outline || '')
-        setDetailedOutline(bundle.detailed_outline || '')
-        if (bundle.isMock) {
-            setModeTag('mock')
+        setErrorMessage('')
+        try {
+            const [bundle, history] = await Promise.all([
+                fetchOutlineBundle({
+                    workspaceId: workspace.workspace_id,
+                    projectRoot: workspace.project_root,
+                }),
+                fetchOutlineSplitHistory({
+                    workspaceId: workspace.workspace_id,
+                    projectRoot: workspace.project_root,
+                    limit: 20,
+                    offset: 0,
+                }),
+            ])
+            setTotalOutline(bundle.total_outline || '')
+            setDetailedOutline(bundle.detailed_outline || '')
+            setSplitHistory(Array.isArray(history.items) ? history.items : [])
+        } catch (error) {
+            setErrorMessage(formatOutlineApiError(error))
+            setLastAction('bundle-refresh -> failed')
+        } finally {
+            setLoadingBundle(false)
         }
-
-        const history = await fetchOutlineSplitHistory({ limit: 20, offset: 0 })
-        setSplitHistory(Array.isArray(history.items) ? history.items : [])
-        if (history.isMock) {
-            setModeTag('mock')
-        }
-        setLoadingBundle(false)
-    }, [])
+    }, [workspace.project_root, workspace.workspace_id])
 
     useEffect(() => {
         void refreshBundle()
     }, [refreshBundle])
 
     const runSplitPreview = useCallback(async selection => {
-        if (!selection.selectionText || selection.selectionEnd <= selection.selectionStart) {
+        if (!hasValidSelection(selection)) {
             setLastAction('split-preview -> 未检测到有效选区')
             return
         }
         setSplitting(true)
-        const result = await previewOutlineSplit(selection)
-        if (result.isMock) {
-            setModeTag('mock')
+        setErrorMessage('')
+        try {
+            const result = await previewOutlineSplit({
+                ...selection,
+                workspaceId: workspace.workspace_id,
+                projectRoot: workspace.project_root,
+            })
+            setPreviewSegments(Array.isArray(result.segments) ? result.segments : [])
+            setLastAction(`split-preview -> ${result.segments?.length || 0} 段`)
+        } catch (error) {
+            setPreviewSegments([])
+            setErrorMessage(formatOutlineApiError(error, 'OUTLINE_SPLIT_PREVIEW_FAILED'))
+            setLastAction('split-preview -> failed')
+        } finally {
+            setSplitting(false)
         }
-        setPreviewSegments(Array.isArray(result.segments) ? result.segments : [])
-        setLastAction(`split-preview -> ${result.segments?.length || 0} 段`)
-        setSplitting(false)
-    }, [])
+    }, [workspace.project_root, workspace.workspace_id])
 
     const runSplitApply = useCallback(async selection => {
-        if (!selection.selectionText || selection.selectionEnd <= selection.selectionStart) {
+        if (!hasValidSelection(selection)) {
             setLastAction('split-apply -> 未检测到有效选区')
             return
         }
 
         setSplitting(true)
+        setErrorMessage('')
         const idempotencyKey = buildIdempotencyKey(
             selection.selectionStart,
             selection.selectionEnd,
             selection.selectionText,
         )
-        const result = await applyOutlineSplit({
-            ...selection,
-            idempotencyKey,
-        })
-        if (result.isMock) {
-            setModeTag('mock')
+        try {
+            const result = await applyOutlineSplit({
+                ...selection,
+                workspaceId: workspace.workspace_id,
+                projectRoot: workspace.project_root,
+                idempotencyKey,
+            })
+            const count = result.record?.segments?.length || 0
+            const idempotencyStatus = result.idempotency?.status || 'created'
+            setLastAction(`split-apply -> ${count} 段, key=${idempotencyKey}, status=${idempotencyStatus}`)
+            await refreshBundle()
+        } catch (error) {
+            setErrorMessage(formatOutlineApiError(error, 'OUTLINE_SPLIT_APPLY_FAILED'))
+            setLastAction('split-apply -> failed')
+        } finally {
+            setSplitting(false)
         }
-        const count = result.record?.segments?.length || 0
-        setLastAction(`split-apply -> ${count} 段, key=${idempotencyKey}`)
+    }, [refreshBundle, workspace.project_root, workspace.workspace_id])
+
+    const runAssistEdit = useCallback(async selection => {
+        if (!hasValidSelection(selection)) {
+            setLastAction('assist-edit -> 请先在总纲中选中有效区间')
+            return
+        }
+
+        setAssisting(true)
+        setErrorMessage('')
+        try {
+            const previewResult = await requestEditAssistPreview({
+                workspace,
+                selection,
+            })
+            const proposal = previewResult?.proposal || null
+            setAssistPreview(proposal)
+            setLastAction(`assist-edit -> preview ready (${proposal?.id || 'proposal-unknown'})`)
+        } catch (error) {
+            setAssistPreview(null)
+            setErrorMessage(formatOutlineApiError(error, 'EDIT_ASSIST_PREVIEW_FAILED'))
+            setLastAction('assist-edit -> failed')
+        } finally {
+            setAssisting(false)
+        }
+    }, [workspace])
+
+    const handleResplitApplied = useCallback(async result => {
+        const status = result?.idempotency?.status || 'created'
+        setLastAction(`resplit-apply -> ${result?.record?.id || 'unknown-record'} (${status})`)
+        setResplitDialogOpen(false)
         await refreshBundle()
-        setSplitting(false)
     }, [refreshBundle])
 
     const handleMenuAction = useCallback(async payload => {
         const actionId = payload.actionId
-        const selection = payload.meta?.selection || {
-            selectionStart: 0,
-            selectionEnd: 0,
-            selectionText: '',
+        const selectionFromMenu = payload.meta?.selection || { selectionStart: 0, selectionEnd: 0, selectionText: '' }
+        const selection = hasValidSelection(selectionFromMenu)
+            ? selectionFromMenu
+            : lastMasterSelectionRef.current
+
+        if (hasValidSelection(selection)) {
+            lastMasterSelectionRef.current = selection
         }
 
         if (actionId === 'split-preview') {
@@ -160,20 +283,34 @@ export default function OutlineWorkspacePage() {
         }
 
         if (actionId === 'resplit-preview') {
-            setLastAction('resplit-preview -> T10 对接点（当前仅占位）')
+            if (!hasValidSelection(selection)) {
+                setLastAction('resplit-preview -> 请先在总纲中选中有效区间')
+                return
+            }
+            setErrorMessage('')
+            setResplitSelection({
+                selectionStart: selection.selectionStart,
+                selectionEnd: selection.selectionEnd,
+            })
+            setResplitDialogOpen(true)
+            setLastAction(`resplit-preview -> open [${selection.selectionStart}, ${selection.selectionEnd})`)
             return
         }
         if (actionId === 'assist-edit') {
-            setLastAction('assist-edit -> T07/T10 对接点（当前仅占位）')
+            await runAssistEdit(selection)
             return
         }
         setLastAction(`${actionId} -> no-op`)
-    }, [runSplitApply, runSplitPreview])
+    }, [runAssistEdit, runSplitApply, runSplitPreview])
 
     const openOutlineMenu = useCallback((event, panel) => {
+        const currentMasterSelection = buildSelectionPayload(masterRef)
+        if (hasValidSelection(currentMasterSelection)) {
+            lastMasterSelectionRef.current = currentMasterSelection
+        }
         const selection = panel === 'master'
-            ? buildSelectionPayload(masterRef)
-            : { selectionStart: 0, selectionEnd: 0, selectionText: '' }
+            ? currentMasterSelection
+            : lastMasterSelectionRef.current
 
         openForEvent(event, {
             sourceId: `outline.${panel}.editor`,
@@ -227,15 +364,25 @@ export default function OutlineWorkspacePage() {
         <PageScaffold
             title="双纲工作台"
             badge="Outline Workspace"
-            description="双栏同屏：在总纲区选中文本并右键即可拆分预览/应用，细纲区实时刷新。"
+            description="双栏同屏：在总纲区选中文本并右键即可拆分预览/应用，细纲区右键可发起重拆预览。"
         >
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button type="button" style={BUTTON_STYLE} disabled={loadingBundle} onClick={refreshBundle}>
                     刷新双纲数据
                 </button>
-                <span className="card-badge badge-green">mode: {modeTag.toUpperCase()}</span>
+                <span className="card-badge badge-green">mode: API</span>
                 <span className="card-badge badge-blue">{splitCountBadge}</span>
             </div>
+
+            {errorMessage ? (
+                <div className="card" style={{ borderColor: '#d46a57' }}>
+                    <div className="card-header">
+                        <span className="card-title">请求失败</span>
+                        <span className="card-badge badge-amber">可重试</span>
+                    </div>
+                    <p style={{ margin: 0, color: '#9a2a1a' }}>{errorMessage}</p>
+                </div>
+            ) : null}
 
             <div style={DUAL_LAYOUT_STYLE}>
                 <div className="card">
@@ -266,6 +413,9 @@ export default function OutlineWorkspacePage() {
                         style={TEXTAREA_STYLE}
                         onContextMenu={event => openOutlineMenu(event, 'detail')}
                     />
+                    <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#8f7f5c' }}>
+                        重拆预览会使用你最近一次在总纲区选中的区间。
+                    </p>
                 </div>
             </div>
 
@@ -289,11 +439,43 @@ export default function OutlineWorkspacePage() {
 
             <div className="card">
                 <div className="card-header">
+                    <span className="card-title">协助修改预览</span>
+                    <span className="card-badge badge-purple">{assisting ? '处理中' : 'edit-assist'}</span>
+                </div>
+                {!assistPreview ? (
+                    <p style={{ margin: 0, color: '#8f7f5c' }}>尚未触发协助修改预览。</p>
+                ) : (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                        <p style={{ margin: 0, fontSize: 12, color: '#8f7f5c' }}>
+                            proposal: {assistPreview.id || 'unknown-proposal'}
+                        </p>
+                        <p style={{ margin: 0, fontSize: 13, color: '#5d5035' }}>
+                            {assistPreview.preview || assistPreview.after_text || ''}
+                        </p>
+                    </div>
+                )}
+            </div>
+
+            <div className="card">
+                <div className="card-header">
                     <span className="card-title">协议回执</span>
                     <span className="card-badge badge-purple">Context Menu Contract Reusable</span>
                 </div>
                 <p style={{ margin: 0 }}>最近动作: {lastAction}</p>
             </div>
+
+            <ResplitDialog
+                isOpen={resplitDialogOpen}
+                workspace={workspace}
+                selectionStart={resplitSelection.selectionStart}
+                selectionEnd={resplitSelection.selectionEnd}
+                onClose={() => {
+                    setResplitDialogOpen(false)
+                }}
+                onApplied={result => {
+                    void handleResplitApplied(result)
+                }}
+            />
         </PageScaffold>
     )
 }

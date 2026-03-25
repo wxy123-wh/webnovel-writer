@@ -123,8 +123,8 @@ export default function ResplitDialog({
     workspace,
     selectionStart = 0,
     selectionEnd = 0,
-    onClose,
-    onApplied,
+    onClose = () => {},
+    onApplied = () => {},
 }) {
     const normalizedWorkspace = useMemo(
         () => normalizeWorkspace(workspace),
@@ -197,10 +197,9 @@ export default function ResplitDialog({
                     idempotency_key: buildIdempotencyKey(preview.rollback_plan),
                 },
             )
-            setApplyMessage(`已完成重拆落盘: ${result?.record?.id || 'unknown-record'}`)
-            if (typeof onApplied === 'function') {
-                onApplied(result)
-            }
+            const idempotencyStatus = result?.idempotency?.status || 'created'
+            setApplyMessage(`已完成重拆落盘: ${result?.record?.id || 'unknown-record'} (${idempotencyStatus})`)
+            onApplied(result)
         } catch (applyError) {
             setError(`${applyError.errorCode || 'apply_failed'}: ${applyError.message}`)
         } finally {

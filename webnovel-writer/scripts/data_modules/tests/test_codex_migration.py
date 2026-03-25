@@ -2,8 +2,25 @@
 # -*- coding: utf-8 -*-
 
 import json
+import shutil
 import sys
 from pathlib import Path
+from uuid import uuid4
+
+import pytest
+
+TEST_TMP_ROOT = Path(__file__).resolve().parent / ".tmp" / "codex-migration"
+
+
+@pytest.fixture
+def tmp_path():
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    case_root = (TEST_TMP_ROOT / f"case-{uuid4().hex[:8]}").resolve()
+    case_root.mkdir(parents=True, exist_ok=False)
+    try:
+        yield case_root
+    finally:
+        shutil.rmtree(case_root, ignore_errors=True)
 
 
 def _ensure_scripts_on_path() -> None:
@@ -82,3 +99,16 @@ def test_codex_migration_apply_moves_pointer_and_references(tmp_path):
     assert report["moved"]
     assert Path(report["report_path"]).is_file()
 
+
+def test_codex_migration_rejects_project_without_state_json(tmp_path):
+    _ensure_scripts_on_path()
+
+    from migrations.codex_migration import migrate_codex_runtime
+
+    invalid_root = (tmp_path / "workspace").resolve()
+    (invalid_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(FileNotFoundError) as exc:
+        migrate_codex_runtime(project_root=invalid_root, dry_run=True)
+
+    assert "missing .webnovel/state.json" in str(exc.value)

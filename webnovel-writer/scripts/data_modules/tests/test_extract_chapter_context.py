@@ -5,11 +5,17 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 
-def test_extract_state_summary_accepts_dominant_key(tmp_path):
+
+def _ensure_scripts_path() -> None:
     scripts_dir = Path(__file__).resolve().parents[2]
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
+
+
+def test_extract_state_summary_accepts_dominant_key(tmp_path):
+    _ensure_scripts_path()
 
     from extract_chapter_context import extract_state_summary
 
@@ -37,10 +43,50 @@ def test_extract_state_summary_accepts_dominant_key(tmp_path):
     assert "Ch11:fire" in text
 
 
+def test_extract_state_summary_supports_location_object(tmp_path):
+    _ensure_scripts_path()
+
+    from extract_chapter_context import extract_state_summary
+
+    state = {
+        "progress": {"current_chapter": 12, "total_words": 12000},
+        "protagonist_state": {
+            "power": {"realm": "筑基", "layer": 2},
+            "location": {"current": "玄星城", "last_chapter": 11},
+            "golden_finger": {"name": "系统", "level": 1},
+        },
+    }
+    webnovel_dir = tmp_path / ".webnovel"
+    webnovel_dir.mkdir(parents=True, exist_ok=True)
+    (webnovel_dir / "state.json").write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+    text = extract_state_summary(tmp_path)
+    assert "**当前位置**: 玄星城" in text
+
+
+def test_extract_state_summary_handles_invalid_location_input(tmp_path):
+    _ensure_scripts_path()
+
+    from extract_chapter_context import extract_state_summary
+
+    state = {
+        "progress": {"current_chapter": 4, "total_words": 4000},
+        "protagonist_state": {
+            "power": {"realm": "练气", "layer": 9},
+            "location": ["未知结构"],
+            "golden_finger": {"name": "系统", "level": 1},
+        },
+    }
+    webnovel_dir = tmp_path / ".webnovel"
+    webnovel_dir.mkdir(parents=True, exist_ok=True)
+    (webnovel_dir / "state.json").write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+    text = extract_state_summary(tmp_path)
+    assert "**当前位置**: ?" in text
+
+
 def test_extract_chapter_outline_supports_hyphen_filename(tmp_path):
-    scripts_dir = Path(__file__).resolve().parents[2]
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
+    _ensure_scripts_path()
 
     from extract_chapter_context import extract_chapter_outline
 
@@ -54,9 +100,7 @@ def test_extract_chapter_outline_supports_hyphen_filename(tmp_path):
 
 
 def test_extract_chapter_outline_prefers_state_volume_mapping(tmp_path):
-    scripts_dir = Path(__file__).resolve().parents[2]
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
+    _ensure_scripts_path()
 
     from extract_chapter_context import extract_chapter_outline
 
@@ -82,9 +126,7 @@ def test_extract_chapter_outline_prefers_state_volume_mapping(tmp_path):
 
 
 def test_extract_chapter_outline_falls_back_when_state_has_no_match(tmp_path):
-    scripts_dir = Path(__file__).resolve().parents[2]
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
+    _ensure_scripts_path()
 
     from extract_chapter_context import extract_chapter_outline
 
@@ -103,9 +145,7 @@ def test_extract_chapter_outline_falls_back_when_state_has_no_match(tmp_path):
 
 
 def test_build_chapter_context_payload_includes_contract_sections(tmp_path):
-    scripts_dir = Path(__file__).resolve().parents[2]
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
+    _ensure_scripts_path()
 
     from extract_chapter_context import build_chapter_context_payload
     from data_modules.config import DataModulesConfig
@@ -161,12 +201,14 @@ def test_build_chapter_context_payload_includes_contract_sections(tmp_path):
     assert "rag_assist" in payload
     assert isinstance(payload["rag_assist"], dict)
     assert payload["rag_assist"].get("invoked") is False
+    assert isinstance(payload.get("state"), dict)
+    assert payload["state"]["protagonist"]["location"] == "宗门"
+    assert payload["state"]["progress"]["current_chapter"] == 3
+    assert "**当前位置**: 宗门" in payload["state_summary"]
 
 
 def test_render_text_contains_writing_guidance_section(tmp_path):
-    scripts_dir = Path(__file__).resolve().parents[2]
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
+    _ensure_scripts_path()
 
     from extract_chapter_context import _render_text
 
@@ -233,10 +275,43 @@ def test_render_text_contains_writing_guidance_section(tmp_path):
     assert "next_reason=78.0" in text
 
 
+def test_render_text_prefers_structured_state_over_state_summary(tmp_path):
+    _ensure_scripts_path()
+
+    from extract_chapter_context import _render_text
+
+    payload = {
+        "chapter": 5,
+        "outline": "测试大纲",
+        "previous_summaries": [],
+        "state": {
+            "warning": "",
+            "progress": {"current_chapter": 5, "total_words": 15000},
+            "protagonist": {
+                "realm": "筑基",
+                "layer": 3,
+                "location": "玄星城",
+                "golden_finger_name": "系统",
+                "golden_finger_level": 2,
+            },
+            "strand_history": [],
+            "urgent_foreshadowing": [],
+        },
+        "state_summary": "**当前位置**: 错误地点",
+        "context_contract_version": None,
+        "reader_signal": {},
+        "genre_profile": {},
+        "writing_guidance": {},
+        "rag_assist": {},
+    }
+
+    text = _render_text(payload)
+    assert "**当前位置**: 玄星城" in text
+    assert "**当前位置**: 错误地点" not in text
+
+
 def test_render_text_contains_rag_assist_section_when_hits_exist(tmp_path):
-    scripts_dir = Path(__file__).resolve().parents[2]
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
+    _ensure_scripts_path()
 
     from extract_chapter_context import _render_text
 
@@ -271,3 +346,68 @@ def test_render_text_contains_rag_assist_section_when_hits_exist(tmp_path):
     assert "- 模式: auto" in text
     assert "[graph_hybrid]" in text
     assert "萧炎与药老" in text
+
+
+def test_main_reports_missing_chapter_with_clear_error(tmp_path, monkeypatch, capsys):
+    _ensure_scripts_path()
+
+    from extract_chapter_context import main
+
+    webnovel_dir = tmp_path / ".webnovel"
+    webnovel_dir.mkdir(parents=True, exist_ok=True)
+    (webnovel_dir / "state.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "正文").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "extract_chapter_context.py",
+            "--project-root",
+            str(tmp_path),
+            "--chapter",
+            "88",
+            "--format",
+            "text",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert int(exc.value.code) == 1
+    captured = capsys.readouterr()
+    assert "章节不存在" in captured.err
+    assert "chapter=88" in captured.err
+    assert str(tmp_path / "正文") in captured.err
+
+
+def test_main_warns_when_state_file_missing(tmp_path, monkeypatch, capsys):
+    _ensure_scripts_path()
+
+    from extract_chapter_context import main
+
+    chapter_dir = tmp_path / "正文"
+    chapter_dir.mkdir(parents=True, exist_ok=True)
+    (chapter_dir / "第0001章.md").write_text("# 第1章\n内容", encoding="utf-8")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "extract_chapter_context.py",
+            "--project-root",
+            str(tmp_path),
+            "--chapter",
+            "1",
+            "--format",
+            "json",
+        ],
+    )
+
+    main()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["state"]["warning"].startswith("⚠️ state.json 缺失:")
+    assert payload["state"]["protagonist"]["location"] == "?"
+    assert payload["rag_assist"]["reason"] == "state_missing"

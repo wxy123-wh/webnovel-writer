@@ -94,6 +94,10 @@ class SkillDeleteResponse(BaseModel):
 class SkillAuditQuery(BaseModel):
     workspace_id: str = Field(default="workspace-default")
     project_root: str = Field(default="")
+    action: str | None = Field(default=None)
+    actor: str | None = Field(default=None)
+    start_time: str | None = Field(default=None)
+    end_time: str | None = Field(default=None)
     limit: int = Field(default=100, ge=1, le=1000)
     offset: int = Field(default=0, ge=0)
 

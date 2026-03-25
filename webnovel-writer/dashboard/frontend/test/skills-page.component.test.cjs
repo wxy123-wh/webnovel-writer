@@ -31,6 +31,7 @@ for (const key of Object.getOwnPropertyNames(dom.window)) {
 }
 
 const apiMock = {
+    classifySkillsError: error => error?.errorType || 'api',
     listSkills: async () => ({ items: [], total: 0 }),
     createSkill: async () => ({ status: 'ok' }),
     toggleSkill: async () => ({ status: 'ok', enabled: false }),
@@ -54,6 +55,7 @@ const BASE_SKILL = {
 }
 
 function resetApiMock() {
+    apiMock.classifySkillsError = error => error?.errorType || 'api'
     apiMock.listSkills = async () => ({ items: [], total: 0 })
     apiMock.createSkill = async () => ({ status: 'ok' })
     apiMock.toggleSkill = async () => ({ status: 'ok', enabled: false })
@@ -177,19 +179,65 @@ async function testDeleteSkill() {
     assert.equal(screen.queryByText('outline.splitter'), null)
 }
 
-async function testVisibleErrorFeedback() {
+async function testPermissionErrorFeedback() {
     apiMock.listSkills = async () => {
         throw {
             message: 'Workspace access denied.',
             errorCode: 'workspace_mismatch',
+            errorType: 'permission',
         }
     }
 
     render(React.createElement(SkillsPage))
 
     const alert = await screen.findByRole('alert')
+    assert.match(alert.textContent, /权限错误/)
+    assert.match(alert.textContent, /权限不足或工作区不匹配/)
     assert.match(alert.textContent, /workspace_mismatch/)
-    assert.match(alert.textContent, /Workspace access denied\./)
+}
+
+async function testNetworkErrorFeedback() {
+    apiMock.listSkills = async () => {
+        throw {
+            message: 'Failed to connect',
+            errorCode: 'skills_network_error',
+            errorType: 'network',
+        }
+    }
+
+    render(React.createElement(SkillsPage))
+
+    const alert = await screen.findByRole('alert')
+    assert.match(alert.textContent, /网络错误/)
+    assert.match(alert.textContent, /网络连接失败/)
+    assert.match(alert.textContent, /skills_network_error/)
+}
+
+async function testConflictErrorFeedback() {
+    apiMock.listSkills = async () => ({ items: [], total: 0 })
+    apiMock.createSkill = async () => {
+        throw {
+            message: 'Skill id already exists.',
+            errorCode: 'skill_id_conflict',
+            errorType: 'conflict',
+        }
+    }
+
+    render(React.createElement(SkillsPage))
+    await screen.findByText('暂无技能，先创建一个。')
+
+    fireEvent.change(screen.getByPlaceholderText('outline.splitter'), {
+        target: { value: 'new.skill' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('Outline Splitter'), {
+        target: { value: 'New Skill' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '新增' }))
+
+    const alert = await screen.findByRole('alert')
+    assert.match(alert.textContent, /冲突错误/)
+    assert.match(alert.textContent, /技能 ID 已存在/)
+    assert.match(alert.textContent, /skill_id_conflict/)
 }
 
 async function main() {
@@ -197,7 +245,9 @@ async function main() {
     await runTest('create skill', testCreateSkill)
     await runTest('toggle skill', testToggleSkill)
     await runTest('delete skill', testDeleteSkill)
-    await runTest('error feedback', testVisibleErrorFeedback)
+    await runTest('permission error feedback', testPermissionErrorFeedback)
+    await runTest('network error feedback', testNetworkErrorFeedback)
+    await runTest('conflict error feedback', testConflictErrorFeedback)
     console.log('PASS skills-page component suite')
 }
 
