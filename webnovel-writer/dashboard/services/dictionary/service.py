@@ -89,6 +89,56 @@ def read_settings_file(*, workspace_id: str | None, project_root: str | None, pa
     return resolved.read_text(encoding="utf-8", errors="replace")
 
 
+def write_settings_file(*, workspace_id: str | None, project_root: str | None, path: str, content: str) -> int:
+    root = _resolve_workspace_root(workspace_id=workspace_id, project_root=project_root)
+    normalized_path = (path or "").strip()
+    if not normalized_path:
+        raise DictionaryServiceError(
+            status_code=400,
+            error_code="invalid_path",
+            message="path is required.",
+        )
+
+    try:
+        resolved = safe_resolve(root, normalized_path)
+    except Exception as exc:
+        raise DictionaryServiceError(
+            status_code=403,
+            error_code="path_forbidden",
+            message="Path is outside project root.",
+            details={"path": normalized_path},
+        ) from exc
+
+    settings_root = (root / "设定集").resolve()
+    if not _is_subpath(resolved, settings_root):
+        raise DictionaryServiceError(
+            status_code=403,
+            error_code="path_forbidden",
+            message="Only files under 设定集/ are allowed.",
+            details={"path": normalized_path},
+        )
+
+    suffix = resolved.suffix.lower()
+    if suffix and suffix not in _TEXT_FILE_EXTENSIONS:
+        raise DictionaryServiceError(
+            status_code=400,
+            error_code="unsupported_file_type",
+            message="Only text setting files are writable.",
+            details={"path": normalized_path, "suffix": suffix},
+        )
+
+    if not resolved.exists():
+        raise DictionaryServiceError(
+            status_code=404,
+            error_code="settings_file_not_found",
+            message="Settings file not found.",
+            details={"path": normalized_path},
+        )
+
+    resolved.write_text(content or "", encoding="utf-8")
+    return len((content or "").encode("utf-8"))
+
+
 def extract_dictionary(
     *,
     workspace_id: str | None,

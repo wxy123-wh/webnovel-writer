@@ -721,15 +721,16 @@ def main():
             if args.project_root
             else find_project_root()
         )
-        # P0-1 修复：章节文件不存在是写作新章节时的正常状态，不崩溃，只记录警告
+        # P0-1 修复：章节文件不存在时报错退出
         chapter_exists = _ensure_target_chapter_exists(project_root, args.chapter)
-        payload = build_chapter_context_payload(project_root, args.chapter)
         if not chapter_exists:
             chapters_dir = project_root / "正文"
-            payload.setdefault("warnings", []).append(
-                f"⚠️ 第{args.chapter}章文件尚未创建（{chapters_dir}），"
-                "写作完成后 Data Agent 将更新状态。"
+            print(
+                f"章节不存在 chapter={args.chapter} {chapters_dir}",
+                file=sys.stderr,
             )
+            sys.exit(1)
+        payload = build_chapter_context_payload(project_root, args.chapter)
 
         if args.format == "json":
             print(json.dumps(payload, ensure_ascii=False, indent=2))

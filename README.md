@@ -15,11 +15,9 @@
 
 ## 文档导航
 
-- 架构与模块：`docs/architecture.md`
-- 命令详解：`docs/commands.md`
-- RAG 与配置：`docs/rag-and-config.md`
-- 运维与恢复：`docs/operations.md`
-- Codex 使用：`docs/codex.md`
+- 接口说明：`docs/接口.md`
+- 模块说明：`docs/模块.md`
+- 操作手册：`docs/操作手册.md`
 - Dashboard 开发：`webnovel-writer/DEVELOPMENT.md`
 
 ## 快速开始
@@ -121,17 +119,17 @@ docker compose logs -f
 - 使用 Docker 时建议以只读卷挂载（`:ro`）防止容器意外修改小说文件
 - 推荐使用 `--log-json` 输出结构化日志，对接日志收集系统（如 Loki、Datadog）
 
-## 迁移说明（历史 Claude 痕迹）
+## 迁移说明（历史运行时痕迹）
 
 - 运行时主链路已统一为 `.codex`。
-- 若存在历史 `.claude` 指针，可执行一次性迁移：
+- 若存在历史 legacy 指针，可执行一次性迁移：
 
 ```bash
 python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<PROJECT_ROOT>" migrate codex --dry-run
 python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<PROJECT_ROOT>" migrate codex
 ```
 
-说明：`.claude` 仅用于迁移读取，不再作为日常运行路径。
+说明：迁移命令会读取历史指针并收敛到 `.codex`，日常运行只使用 `.codex`。
 
 ## 开源协议
 

@@ -1,4 +1,4 @@
-.claude/settings.local.json
+.codex/settings.local.json
 
 # Python caches & virtualenv
 __pycache__/
@@ -43,12 +43,15 @@ PROJECT_MINDMAP*.md
 webnovel-writer-v5*-architecture.svg
 _v52_*.json
 _v52_*.txt
-claude_inventory.csv
+codex_inventory.csv
 *_utf8_sample.txt
 piptemp/
 _codex_push_tmp_*/
 webnovel-project/
 webnovel-project-codex-fix/
+examples/demo-novel/
+examples/webnovel-project/
+examples/webnovel-project-codex-fix/
 
 # ----------------------------
 # Tooling / local temp dirs
@@ -59,18 +62,23 @@ webnovel-project-codex-fix/
 /.audit-tmp/
 /.codex-tmp/
 /.codex-security/
-/.claude-plugin/
+/.codex-plugin/
 /.tmp-test/
 /.npm-cache/
 /tmp/
 tmp-*/
+/tmpa*/
+/tmp-write-check-*/
 /pytest-cache-files-*/
 /pytesttmp*/
 /_ptmp_root*/
 /_tmp_pytest/
+/pytest_collected/
+/.tmp-rules-test.rules
 /.venv-run/
 /.venv2/
 /.pytest-local*/
+/__temp__/expired-root/
 
 # Probes / debug artifacts (created during runs)
 /probe-dir-*/
@@ -88,3 +96,5 @@ zztmp_pytest_root*/
 /.codex-security/_probe_write.txt
 /.codex-security/acl-repair/
 
+# Harness runtime session artifacts
+/running/sessions/

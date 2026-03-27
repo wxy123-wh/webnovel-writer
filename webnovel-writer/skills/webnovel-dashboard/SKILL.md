@@ -22,13 +22,13 @@ allowed-tools: Bash Read
 ### Step 0：环境确认
 
 ```bash
-export WORKSPACE_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
+export WORKSPACE_ROOT="${CODEX_PROJECT_DIR:-$PWD}"
 
-if [ -z "${CLAUDE_PLUGIN_ROOT}" ] || [ ! -d "${CLAUDE_PLUGIN_ROOT}/dashboard" ]; then
-  echo "ERROR: 未找到 dashboard 模块: ${CLAUDE_PLUGIN_ROOT}/dashboard" >&2
+if [ -z "${CODEX_PLUGIN_ROOT}" ] || [ ! -d "${CODEX_PLUGIN_ROOT}/dashboard" ]; then
+  echo "ERROR: 未找到 dashboard 模块: ${CODEX_PLUGIN_ROOT}/dashboard" >&2
   exit 1
 fi
-export DASHBOARD_DIR="${CLAUDE_PLUGIN_ROOT}/dashboard"
+export DASHBOARD_DIR="${CODEX_PLUGIN_ROOT}/dashboard"
 ```
 
 ### Step 1：安装依赖（首次）
@@ -40,15 +40,15 @@ python -m pip install -r "${DASHBOARD_DIR}/requirements.txt" --quiet
 ### Step 2：解析项目根目录并准备 Python 模块路径
 
 ```bash
-export SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
+export SCRIPTS_DIR="${CODEX_PLUGIN_ROOT}/scripts"
 export PROJECT_ROOT="$(python "${SCRIPTS_DIR}/webnovel.py" --project-root "${WORKSPACE_ROOT}" where)"
 echo "项目路径: ${PROJECT_ROOT}"
 
 # 确保 `python -m dashboard.server` 可在任意工作目录下找到插件模块
 if [ -n "${PYTHONPATH:-}" ]; then
-  export PYTHONPATH="${CLAUDE_PLUGIN_ROOT}:${PYTHONPATH}"
+  export PYTHONPATH="${CODEX_PLUGIN_ROOT}:${PYTHONPATH}"
 else
-  export PYTHONPATH="${CLAUDE_PLUGIN_ROOT}"
+  export PYTHONPATH="${CODEX_PLUGIN_ROOT}"
 fi
 
 # 前端 dist 已随插件发布；若缺失说明安装包异常

@@ -291,6 +291,50 @@ export async function readSettingsFile(options = {}) {
     }
 }
 
+export async function writeSettingsFile(options = {}) {
+    const workspace = buildWorkspace(options)
+    const filePath = typeof options.path === 'string' ? options.path.trim() : ''
+    if (!filePath) {
+        const error = new Error('path is required')
+        error.errorCode = 'invalid_path'
+        throw error
+    }
+
+    const content = typeof options.content === 'string' ? options.content : ''
+
+    try {
+        const payload = await requestJSON('/api/settings/files/write', {
+            method: 'POST',
+            body: {
+                workspace,
+                path: filePath,
+                content,
+            },
+            signal: options.signal,
+        })
+        return {
+            status: payload?.status || 'ok',
+            path: payload?.path || filePath,
+            bytes_written: Number.isFinite(payload?.bytes_written)
+                ? payload.bytes_written
+                : new TextEncoder().encode(content).length,
+            isMock: false,
+        }
+    } catch (error) {
+        if (!shouldUseMockFallback()) {
+            throw error
+        }
+        MOCK_FILE_CONTENTS[filePath] = content
+        return {
+            status: 'mock',
+            path: filePath,
+            bytes_written: new TextEncoder().encode(content).length,
+            isMock: true,
+            error,
+        }
+    }
+}
+
 export async function extractSettingDictionary(options = {}) {
     const workspace = buildWorkspace(options)
     const incremental = options.incremental !== false

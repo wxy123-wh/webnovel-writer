@@ -23,24 +23,18 @@ from runtime_compat import normalize_windows_path
 
 DEFAULT_PROJECT_DIR_NAMES: tuple[str, ...] = ("webnovel-project",)
 CURRENT_PROJECT_POINTER_FILE = ".webnovel-current-project"
-POINTER_DIR_NAMES: tuple[str, ...] = (".codex", ".claude")
-# 默认收敛到 `.codex`；`.claude` 仍作为兼容读路径保留。
+POINTER_DIR_NAMES: tuple[str, ...] = (".codex",)
 CURRENT_PROJECT_POINTER_REL: Path = Path(POINTER_DIR_NAMES[0]) / CURRENT_PROJECT_POINTER_FILE
-LEGACY_CURRENT_PROJECT_POINTER_REL: Path = Path(".claude") / CURRENT_PROJECT_POINTER_FILE
 
-# 用户级全局映射（当 skills/agents 安装在 ~/.codex / ~/.claude 时，项目目录可能在任意盘符）
+# 用户级全局映射（当 skills/agents 安装在 ~/.codex 时，项目目录可能在任意盘符）
 # 该文件用于在“空上下文 + CWD 不在项目内”的情况下仍能定位到正确 project_root。
 GLOBAL_REGISTRY_REL: Path = Path("webnovel-writer") / "registry.json"
-LEGACY_GLOBAL_REGISTRY_REL: Path = Path("webnovel-writer") / "workspaces.json"
 
 # 工作区与用户目录常见环境变量（存在时优先作为“工作区根目录”提示）
 ENV_CODEX_PROJECT_DIR = "CODEX_PROJECT_DIR"
-ENV_CLAUDE_PROJECT_DIR = "CLAUDE_PROJECT_DIR"
 ENV_CODEX_HOME = "CODEX_HOME"
-ENV_CLAUDE_HOME = "CLAUDE_HOME"
 ENV_WEBNOVEL_HOME = "WEBNOVEL_HOME"
 ENV_WEBNOVEL_CODEX_HOME = "WEBNOVEL_CODEX_HOME"
-ENV_WEBNOVEL_CLAUDE_HOME = "WEBNOVEL_CLAUDE_HOME"
 
 
 def _find_git_root(cwd: Path) -> Optional[Path]:
@@ -80,9 +74,7 @@ def _iter_user_home_candidates() -> list[Path]:
     for key in (
         ENV_WEBNOVEL_HOME,
         ENV_WEBNOVEL_CODEX_HOME,
-        ENV_WEBNOVEL_CLAUDE_HOME,
         ENV_CODEX_HOME,
-        ENV_CLAUDE_HOME,
     ):
         val = os.environ.get(key)
         if val:
@@ -90,9 +82,8 @@ def _iter_user_home_candidates() -> list[Path]:
 
     homes: list[Path] = [_normalize_home(raw) for raw in raws]
 
-    # 默认优先 Codex，再兼容 Claude
+    # 默认使用 Codex 运行时目录
     homes.append((Path.home() / ".codex").resolve())
-    homes.append((Path.home() / ".claude").resolve())
 
     deduped: list[Path] = []
     seen: set[str] = set()
@@ -109,7 +100,6 @@ def _global_registry_paths() -> list[Path]:
     paths: list[Path] = []
     for home in _iter_user_home_candidates():
         paths.append(home / GLOBAL_REGISTRY_REL)
-        paths.append(home / LEGACY_GLOBAL_REGISTRY_REL)
 
     deduped: list[Path] = []
     seen: set[str] = set()
@@ -199,11 +189,11 @@ def _resolve_project_root_from_global_registry(
     从用户级 registry 中解析 project_root。
 
     安全策略：
-    - 优先使用 workspace_hint / CODEX_PROJECT_DIR / CLAUDE_PROJECT_DIR 提示做匹配。
+    - 优先使用 workspace_hint / CODEX_PROJECT_DIR 提示做匹配。
     - 默认不使用 last_used 兜底，避免在“完全无上下文”时误命中错误项目。
     """
     hints: list[Path] = []
-    env_ws = os.environ.get(ENV_CODEX_PROJECT_DIR) or os.environ.get(ENV_CLAUDE_PROJECT_DIR)
+    env_ws = os.environ.get(ENV_CODEX_PROJECT_DIR)
     if env_ws:
         hints.append(normalize_windows_path(env_ws).expanduser())
     if workspace_hint is not None:
@@ -283,7 +273,7 @@ def update_global_registry_current_project(
 
     ws = workspace_root
     if ws is None:
-        env_ws = os.environ.get(ENV_CODEX_PROJECT_DIR) or os.environ.get(ENV_CLAUDE_PROJECT_DIR)
+        env_ws = os.environ.get(ENV_CODEX_PROJECT_DIR)
         if env_ws:
             ws = normalize_windows_path(env_ws).expanduser()
     if ws is None:
@@ -364,7 +354,7 @@ def _resolve_project_root_from_pointer(cwd: Path, *, stop_at: Optional[Path] = N
 
 
 def _find_workspace_root_with_context_dir(start: Path) -> Optional[Path]:
-    """Find nearest ancestor containing `.codex/` or `.claude/`."""
+    """Find nearest ancestor containing `.codex/`."""
     for candidate in (start, *start.parents):
         for dirname in POINTER_DIR_NAMES:
             if (candidate / dirname).is_dir():
@@ -376,7 +366,7 @@ def write_current_project_pointer(project_root: Path, *, workspace_root: Optiona
     """
     Write workspace-level current project pointer and return pointer file path.
 
-    If no workspace root with `.codex/` or `.claude/` can be found, returns None (non-fatal).
+    If no workspace root with `.codex/` can be found, returns None (non-fatal).
     """
     root = normalize_windows_path(project_root).expanduser().resolve()
     if not _is_project_root(root):
@@ -390,7 +380,7 @@ def write_current_project_pointer(project_root: Path, *, workspace_root: Optiona
     if ws_root is None:
         ws_root = _find_workspace_root_with_context_dir(Path.cwd().resolve())
     if ws_root is None:
-        # 兜底：若无法找到 `.codex/` 或 `.claude/`，将项目父目录视为“工作区”候选，
+        # 兜底：若无法找到 `.codex/`，将项目父目录视为“工作区”候选，
         # 仅用于写入用户级 registry（不创建 context 目录，不写 pointer 文件）。
         ws_root = root.parent if root.parent != root else None
     # 注意：ws_root 可能为 None（例如全局安装的 skills/agents，工作区内没有 context 目录）。
@@ -398,7 +388,7 @@ def write_current_project_pointer(project_root: Path, *, workspace_root: Optiona
 
     pointer_file: Optional[Path] = None
     if ws_root is not None:
-        # 仅当工作区内已经存在 `.codex/` 或 `.claude/` 时才写入指针，避免在任意目录下凭空创建。
+        # 仅当工作区内已经存在 `.codex/` 时才写入指针，避免在任意目录下凭空创建。
         pointer_dir: Optional[Path] = None
         for dirname in POINTER_DIR_NAMES:
             candidate = ws_root / dirname
@@ -447,7 +437,7 @@ def resolve_project_root(explicit_project_root: Optional[str] = None, *, cwd: Op
         if (root / ".webnovel").exists():
             raise FileNotFoundError(f"Not a webnovel project root (missing .webnovel/state.json): {root}")
 
-        # 兼容：显式传入“工作区根目录”（含 `.codex/.webnovel-current-project` 或 `.claude/...` 指针）
+        # 兼容：显式传入“工作区根目录”（含 `.codex/.webnovel-current-project` 指针）
         # 例如：D:\wk\xiaoshuo 不是项目根，但其指针指向 D:\wk\xiaoshuo\<书名>
         pointer_root = _resolve_project_root_from_pointer(root, stop_at=_find_git_root(root))
         if pointer_root is not None:
@@ -475,17 +465,15 @@ def resolve_project_root(explicit_project_root: Optional[str] = None, *, cwd: Op
     base = (cwd or Path.cwd()).resolve()
     git_root = _find_git_root(base)
 
-    # Workspace pointer fallback (for layouts where `.codex`/`.claude` is in workspace root).
+    # Workspace pointer fallback (for layouts where `.codex` is in workspace root).
     pointer_root = _resolve_project_root_from_pointer(base, stop_at=git_root)
     if pointer_root is not None:
         return pointer_root
 
     # 用户级 registry fallback（仅在“有上下文提示”时启用，避免误命中）
-    # - 若 CODEX_PROJECT_DIR / CLAUDE_PROJECT_DIR 存在：认为宿主提供了工作区上下文
+    # - 若 CODEX_PROJECT_DIR 存在：认为宿主提供了工作区上下文
     # - 否则仅在 base 位于某个已记录 workspace 内时启用（前缀匹配）
-    allow_last_used = bool(
-        os.environ.get(ENV_CODEX_PROJECT_DIR) or os.environ.get(ENV_CLAUDE_PROJECT_DIR)
-    )
+    allow_last_used = bool(os.environ.get(ENV_CODEX_PROJECT_DIR))
     reg_root = _resolve_project_root_from_global_registry(
         base,
         workspace_hint=None,

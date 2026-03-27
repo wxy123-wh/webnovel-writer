@@ -3,7 +3,7 @@ Dashboard 启动脚本
 
 用法：
     python -m dashboard.server --project-root /path/to/novel-project
-    python -m dashboard.server                   # 自动从 .codex/.claude 指针读取
+    python -m dashboard.server                   # 自动从 .codex 指针读取
 """
 
 import argparse
@@ -23,9 +23,9 @@ def _resolve_project_root(cli_root: str | None) -> Path:
     if env:
         return Path(env).resolve()
 
-    # 尝试从 .codex / .claude 指针读取
+    # 尝试从 .codex 指针读取
     cwd = Path.cwd()
-    for dirname in (".codex", ".claude"):
+    for dirname in (".codex",):
         pointer = cwd / dirname / ".webnovel-current-project"
         if not pointer.is_file():
             continue

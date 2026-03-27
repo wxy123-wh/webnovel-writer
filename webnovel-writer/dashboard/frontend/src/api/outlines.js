@@ -1,5 +1,8 @@
 const DEFAULT_WORKSPACE_ID = 'workspace-default'
 
+let cachedAutoProjectRoot = ''
+let pendingAutoProjectRootPromise = null
+
 export function resolveOutlineProjectRoot(explicitProjectRoot) {
     if (typeof explicitProjectRoot === 'string' && explicitProjectRoot.trim()) {
         return explicitProjectRoot.trim()
@@ -22,6 +25,11 @@ export function createOutlineWorkspace({ workspaceId, projectRoot } = {}) {
         workspace_id: workspaceId || DEFAULT_WORKSPACE_ID,
         project_root: resolveOutlineProjectRoot(projectRoot),
     }
+}
+
+export function __resetOutlineProjectRootCacheForTests() {
+    cachedAutoProjectRoot = ''
+    pendingAutoProjectRootPromise = null
 }
 
 function createRequestUrl(pathname, query = {}) {
@@ -70,6 +78,49 @@ async function requestJSON(pathname, { method = 'GET', query, body, signal } = {
     return payload
 }
 
+async function resolveOutlineProjectRootForRequest(options = {}) {
+    const explicit = resolveOutlineProjectRoot(options.projectRoot)
+    if (explicit) {
+        return explicit
+    }
+
+    if (cachedAutoProjectRoot) {
+        return cachedAutoProjectRoot
+    }
+
+    if (!pendingAutoProjectRootPromise) {
+        pendingAutoProjectRootPromise = requestJSON('/api/project/root', {
+            signal: options.signal,
+        })
+            .then(payload => {
+                const resolved = typeof payload?.project_root === 'string'
+                    ? payload.project_root.trim()
+                    : ''
+                if (payload?.status === 'ok' && resolved) {
+                    cachedAutoProjectRoot = resolved
+                    if (typeof window !== 'undefined') {
+                        window.__WEBNOVEL_PROJECT_ROOT = resolved
+                    }
+                    return resolved
+                }
+                return ''
+            })
+            .catch(() => '')
+            .finally(() => {
+                pendingAutoProjectRootPromise = null
+            })
+    }
+
+    return pendingAutoProjectRootPromise
+}
+
+async function createOutlineWorkspaceForRequest(options = {}) {
+    return {
+        workspace_id: options.workspaceId || DEFAULT_WORKSPACE_ID,
+        project_root: await resolveOutlineProjectRootForRequest(options),
+    }
+}
+
 export function formatOutlineApiError(error, fallbackCode = 'api_request_failed') {
     const code = typeof error?.errorCode === 'string' && error.errorCode.trim()
         ? error.errorCode.trim()
@@ -81,7 +132,7 @@ export function formatOutlineApiError(error, fallbackCode = 'api_request_failed'
 }
 
 export async function fetchOutlineBundle(options = {}) {
-    const workspace = createOutlineWorkspace(options)
+    const workspace = await createOutlineWorkspaceForRequest(options)
     const payload = await requestJSON('/api/outlines', {
         query: {
             workspace_id: workspace.workspace_id,
@@ -99,7 +150,7 @@ export async function fetchOutlineBundle(options = {}) {
 }
 
 export async function previewOutlineSplit(options = {}) {
-    const workspace = createOutlineWorkspace(options)
+    const workspace = await createOutlineWorkspaceForRequest(options)
     const payload = {
         workspace,
         selection_start: Math.max(0, options.selectionStart ?? 0),
@@ -120,7 +171,7 @@ export async function previewOutlineSplit(options = {}) {
 }
 
 export async function applyOutlineSplit(options = {}) {
-    const workspace = createOutlineWorkspace(options)
+    const workspace = await createOutlineWorkspaceForRequest(options)
     const payload = {
         workspace,
         selection_start: Math.max(0, options.selectionStart ?? 0),
@@ -141,7 +192,7 @@ export async function applyOutlineSplit(options = {}) {
 }
 
 export async function fetchOutlineSplitHistory(options = {}) {
-    const workspace = createOutlineWorkspace(options)
+    const workspace = await createOutlineWorkspaceForRequest(options)
     const payload = await requestJSON('/api/outlines/splits', {
         query: {
             workspace_id: workspace.workspace_id,

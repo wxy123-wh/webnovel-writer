@@ -7,12 +7,14 @@ from .service import (
     list_settings_tree,
     read_settings_file,
     resolve_conflict,
+    write_settings_file,
 )
 
 __all__ = [
     "DictionaryServiceError",
     "list_settings_tree",
     "read_settings_file",
+    "write_settings_file",
     "extract_dictionary",
     "list_dictionary",
     "resolve_conflict",

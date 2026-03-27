@@ -3,16 +3,25 @@ import PageScaffold from '../components/PageScaffold.jsx'
 import ResplitDialog from '../components/ResplitDialog.jsx'
 import { useContextMenu } from '../components/ContextMenuProvider.jsx'
 import {
+    formatCodexBridgeError,
+    openCodexFileEditDialog,
+    openCodexSplitDialog,
+} from '../api/codexBridge.js'
+import {
     applyOutlineSplit,
     createOutlineWorkspace,
     fetchOutlineBundle,
     fetchOutlineSplitHistory,
     formatOutlineApiError,
-    previewOutlineSplit,
 } from '../api/outlines.js'
 
 const EDIT_ASSIST_TARGET_FILE = '大纲/总纲.md'
 const EDIT_ASSIST_DEFAULT_PROMPT = '请在不改变关键信息的前提下提升叙事节奏和冲突张力。'
+const CODEX_OUTLINE_FILE_MAP = {
+    master: '大纲/总纲.md',
+    detail: '大纲/细纲.md',
+}
+const CODEX_OUTLINE_FILE_EDIT_PROMPT = '请直接修改选中的大纲文本，保持世界设定一致并增强可写性。'
 
 const DUAL_LAYOUT_STYLE = {
     display: 'grid',
@@ -124,6 +133,7 @@ async function requestEditAssistPreview({ workspace, selection, signal }) {
 export default function OutlineWorkspacePage() {
     const { openForEvent } = useContextMenu()
     const masterRef = useRef(null)
+    const detailRef = useRef(null)
     const lastMasterSelectionRef = useRef({ selectionStart: 0, selectionEnd: 0, selectionText: '' })
     const workspace = useMemo(() => createOutlineWorkspace(), [])
 
@@ -137,6 +147,7 @@ export default function OutlineWorkspacePage() {
     const [loadingBundle, setLoadingBundle] = useState(true)
     const [splitting, setSplitting] = useState(false)
     const [assisting, setAssisting] = useState(false)
+    const [launchingCodexFileEdit, setLaunchingCodexFileEdit] = useState(false)
     const [resplitDialogOpen, setResplitDialogOpen] = useState(false)
     const [resplitSelection, setResplitSelection] = useState({
         selectionStart: 0,
@@ -182,16 +193,18 @@ export default function OutlineWorkspacePage() {
         setSplitting(true)
         setErrorMessage('')
         try {
-            const result = await previewOutlineSplit({
-                ...selection,
+            const result = await openCodexSplitDialog({
                 workspaceId: workspace.workspace_id,
                 projectRoot: workspace.project_root,
+                selectionStart: selection.selectionStart,
+                selectionEnd: selection.selectionEnd,
+                selectionText: selection.selectionText,
             })
-            setPreviewSegments(Array.isArray(result.segments) ? result.segments : [])
-            setLastAction(`split-preview -> ${result.segments?.length || 0} 段`)
+            setPreviewSegments([])
+            setLastAction(`split-preview -> Codex 对话已启动 (${result.prompt_file || 'no-prompt-file'})`)
         } catch (error) {
             setPreviewSegments([])
-            setErrorMessage(formatOutlineApiError(error, 'OUTLINE_SPLIT_PREVIEW_FAILED'))
+            setErrorMessage(formatCodexBridgeError(error, 'CODEX_SPLIT_DIALOG_OPEN_FAILED'))
             setLastAction('split-preview -> failed')
         } finally {
             setSplitting(false)
@@ -255,6 +268,37 @@ export default function OutlineWorkspacePage() {
         }
     }, [workspace])
 
+    const runCodexFileEdit = useCallback(async (selection, panel) => {
+        if (!hasValidSelection(selection)) {
+            setLastAction('codex-file-edit -> 未检测到有效选区')
+            return
+        }
+
+        const targetFile = CODEX_OUTLINE_FILE_MAP[panel] || CODEX_OUTLINE_FILE_MAP.master
+        setLaunchingCodexFileEdit(true)
+        setErrorMessage('')
+        try {
+            const result = await openCodexFileEditDialog({
+                workspaceId: workspace.workspace_id,
+                projectRoot: workspace.project_root,
+                filePath: targetFile,
+                selectionStart: selection.selectionStart,
+                selectionEnd: selection.selectionEnd,
+                selectionText: selection.selectionText,
+                instruction: CODEX_OUTLINE_FILE_EDIT_PROMPT,
+                sourceId: `outline.${panel}.editor`,
+            })
+            setLastAction(
+                `codex-file-edit -> ${result.target_file || targetFile} (${result.prompt_file || 'no-prompt-file'}), 完成后请刷新双纲`,
+            )
+        } catch (error) {
+            setErrorMessage(formatCodexBridgeError(error, 'CODEX_FILE_EDIT_DIALOG_OPEN_FAILED'))
+            setLastAction('codex-file-edit -> failed')
+        } finally {
+            setLaunchingCodexFileEdit(false)
+        }
+    }, [workspace.project_root, workspace.workspace_id])
+
     const handleResplitApplied = useCallback(async result => {
         const status = result?.idempotency?.status || 'created'
         setLastAction(`resplit-apply -> ${result?.record?.id || 'unknown-record'} (${status})`)
@@ -264,51 +308,67 @@ export default function OutlineWorkspacePage() {
 
     const handleMenuAction = useCallback(async payload => {
         const actionId = payload.actionId
-        const selectionFromMenu = payload.meta?.selection || { selectionStart: 0, selectionEnd: 0, selectionText: '' }
-        const selection = hasValidSelection(selectionFromMenu)
-            ? selectionFromMenu
-            : lastMasterSelectionRef.current
+        const panel = payload.meta?.panel === 'detail' ? 'detail' : 'master'
+        const panelSelectionFromMenu = payload.meta?.selection || { selectionStart: 0, selectionEnd: 0, selectionText: '' }
+        const masterSelectionFromMenu = payload.meta?.masterSelection || { selectionStart: 0, selectionEnd: 0, selectionText: '' }
 
-        if (hasValidSelection(selection)) {
-            lastMasterSelectionRef.current = selection
+        if (panel === 'master' && hasValidSelection(panelSelectionFromMenu)) {
+            lastMasterSelectionRef.current = panelSelectionFromMenu
         }
 
+        const masterSelection = hasValidSelection(masterSelectionFromMenu)
+            ? masterSelectionFromMenu
+            : lastMasterSelectionRef.current
+        const panelSelection = hasValidSelection(panelSelectionFromMenu)
+            ? panelSelectionFromMenu
+            : panel === 'master'
+                ? lastMasterSelectionRef.current
+                : { selectionStart: 0, selectionEnd: 0, selectionText: '' }
+
         if (actionId === 'split-preview') {
-            await runSplitPreview(selection)
+            await runSplitPreview(masterSelection)
             return
         }
         if (actionId === 'split-apply') {
-            await runSplitApply(selection)
+            await runSplitApply(masterSelection)
             return
         }
 
         if (actionId === 'resplit-preview') {
-            if (!hasValidSelection(selection)) {
+            if (!hasValidSelection(masterSelection)) {
                 setLastAction('resplit-preview -> 请先在总纲中选中有效区间')
                 return
             }
             setErrorMessage('')
             setResplitSelection({
-                selectionStart: selection.selectionStart,
-                selectionEnd: selection.selectionEnd,
+                selectionStart: masterSelection.selectionStart,
+                selectionEnd: masterSelection.selectionEnd,
             })
             setResplitDialogOpen(true)
-            setLastAction(`resplit-preview -> open [${selection.selectionStart}, ${selection.selectionEnd})`)
+            setLastAction(`resplit-preview -> open [${masterSelection.selectionStart}, ${masterSelection.selectionEnd})`)
             return
         }
         if (actionId === 'assist-edit') {
-            await runAssistEdit(selection)
+            await runAssistEdit(masterSelection)
+            return
+        }
+        if (actionId === 'codex-file-edit') {
+            await runCodexFileEdit(panelSelection, panel)
             return
         }
         setLastAction(`${actionId} -> no-op`)
-    }, [runAssistEdit, runSplitApply, runSplitPreview])
+    }, [runAssistEdit, runCodexFileEdit, runSplitApply, runSplitPreview])
 
     const openOutlineMenu = useCallback((event, panel) => {
         const currentMasterSelection = buildSelectionPayload(masterRef)
         if (hasValidSelection(currentMasterSelection)) {
             lastMasterSelectionRef.current = currentMasterSelection
         }
-        const selection = panel === 'master'
+        const currentDetailSelection = buildSelectionPayload(detailRef)
+        const panelSelection = panel === 'master'
+            ? currentMasterSelection
+            : currentDetailSelection
+        const masterSelection = hasValidSelection(currentMasterSelection)
             ? currentMasterSelection
             : lastMasterSelectionRef.current
 
@@ -316,7 +376,8 @@ export default function OutlineWorkspacePage() {
             sourceId: `outline.${panel}.editor`,
             meta: {
                 panel,
-                selection,
+                selection: panelSelection,
+                masterSelection,
             },
             onAction: payload => {
                 void handleMenuAction(payload)
@@ -348,6 +409,14 @@ export default function OutlineWorkspacePage() {
                     actionId: 'assist-edit',
                     label: '协助修改',
                     shortcut: 'G',
+                    disabled: panel !== 'master' || !hasValidSelection(masterSelection),
+                },
+                {
+                    id: 'codex-file-edit',
+                    actionId: 'codex-file-edit',
+                    label: 'Codex直接改文件',
+                    shortcut: 'C',
+                    disabled: !hasValidSelection(panelSelection),
                 },
             ],
         })
@@ -364,7 +433,7 @@ export default function OutlineWorkspacePage() {
         <PageScaffold
             title="双纲工作台"
             badge="Outline Workspace"
-            description="双栏同屏：在总纲区选中文本并右键即可拆分预览/应用，细纲区右键可发起重拆预览。"
+            description="选中文本后右键可直接拉起 Codex；支持拆分对话与直接改写文件。"
         >
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button type="button" style={BUTTON_STYLE} disabled={loadingBundle} onClick={refreshBundle}>
@@ -372,6 +441,7 @@ export default function OutlineWorkspacePage() {
                 </button>
                 <span className="card-badge badge-green">mode: API</span>
                 <span className="card-badge badge-blue">{splitCountBadge}</span>
+                <span className="card-badge badge-purple">{launchingCodexFileEdit ? 'codex: launching' : 'codex: ready'}</span>
             </div>
 
             {errorMessage ? (
@@ -393,12 +463,12 @@ export default function OutlineWorkspacePage() {
                     <textarea
                         ref={masterRef}
                         value={totalOutline}
-                        readOnly
                         style={TEXTAREA_STYLE}
+                        onChange={event => setTotalOutline(event.target.value)}
                         onContextMenu={event => openOutlineMenu(event, 'master')}
                     />
                     <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#8f7f5c' }}>
-                        操作提示: 先在总纲中选中文本，再右键执行“拆分预览/应用拆分”。
+                        操作提示: 选中文本后右键，可选择“拆分预览”或“Codex直接改文件”。
                     </p>
                 </div>
 
@@ -408,13 +478,14 @@ export default function OutlineWorkspacePage() {
                         <span className="card-badge badge-blue">sourceId: outline.detail.editor</span>
                     </div>
                     <textarea
+                        ref={detailRef}
                         value={detailedOutline}
-                        readOnly
+                        onChange={event => setDetailedOutline(event.target.value)}
                         style={TEXTAREA_STYLE}
                         onContextMenu={event => openOutlineMenu(event, 'detail')}
                     />
                     <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#8f7f5c' }}>
-                        重拆预览会使用你最近一次在总纲区选中的区间。
+                        重拆预览仍使用总纲选区；细纲区可直接用 Codex 修改当前文件。
                     </p>
                 </div>
             </div>

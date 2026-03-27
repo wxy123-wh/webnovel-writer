@@ -67,6 +67,14 @@ test('settings api falls back to mock payloads in non-production mode', async ()
         assert.ok(firstExtract.extracted >= 1)
         assert.equal(secondExtract.extracted, 0)
 
+        const writeResult = await module.writeSettingsFile({
+            path: '设定集/角色.md',
+            content: '苏离(角色): 阵营=夜巡; 目标=破案',
+        })
+        assert.equal(writeResult.isMock, true)
+        const readAfterWrite = await module.readSettingsFile({ path: '设定集/角色.md' })
+        assert.equal(readAfterWrite.content, '苏离(角色): 阵营=夜巡; 目标=破案')
+
         const list = await module.listSettingDictionary({ limit: 100, offset: 0 })
         assert.equal(list.isMock, true)
         assert.ok(list.total >= 1)
@@ -102,6 +110,13 @@ test('settings api throws in production mode when backend is unavailable', async
 
         await assert.rejects(
             () => module.resolveDictionaryConflict({ id: 'conf-002', decision: 'confirm', attrs: {} }),
+            error => {
+                assert.match(error.message, /network down/i)
+                return true
+            },
+        )
+        await assert.rejects(
+            () => module.writeSettingsFile({ path: '设定集/角色.md', content: 'x' }),
             error => {
                 assert.match(error.message, /network down/i)
                 return true

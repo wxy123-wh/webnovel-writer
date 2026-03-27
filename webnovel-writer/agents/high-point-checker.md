@@ -9,12 +9,12 @@ model: inherit
 
 > **职责**: 读者满足感机制的质量保障专家（爽点设计）。
 
-> **输出格式**: 遵循 `${CLAUDE_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
+> **输出格式**: 遵循 `${CODEX_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
 
 ## 核心参考
 
-- **分类法**: `${CLAUDE_PLUGIN_ROOT}/references/reading-power-taxonomy.md`
-- **题材画像**: `${CLAUDE_PLUGIN_ROOT}/references/genre-profiles.md`
+- **分类法**: `${CODEX_PLUGIN_ROOT}/references/reading-power-taxonomy.md`
+- **题材画像**: `${CODEX_PLUGIN_ROOT}/references/genre-profiles.md`
 
 ## 检查范围
 

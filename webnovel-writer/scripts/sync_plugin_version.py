@@ -8,8 +8,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-PLUGIN_JSON_PATH = ROOT / "webnovel-writer" / ".claude-plugin" / "plugin.json"
-MARKETPLACE_JSON_PATH = ROOT / ".claude-plugin" / "marketplace.json"
+PLUGIN_JSON_PATH = ROOT / "webnovel-writer" / ".codex-plugin" / "plugin.json"
+MARKETPLACE_JSON_PATH = ROOT / ".codex-plugin" / "marketplace.json"
 README_PATH = ROOT / "README.md"
 PLUGIN_NAME = "webnovel-writer"
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
@@ -170,7 +170,7 @@ def check_versions(expected_version: str | None = None) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Sync Claude plugin release metadata")
+    parser = argparse.ArgumentParser(description="Sync Codex plugin release metadata")
     parser.add_argument(
         "--check",
         action="store_true",

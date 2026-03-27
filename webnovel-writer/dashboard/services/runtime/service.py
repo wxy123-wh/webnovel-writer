@@ -11,7 +11,6 @@ from typing import Any, Callable
 
 DEFAULT_WORKSPACE_ID = "workspace-default"
 TARGET_CONTEXT_DIR = ".codex"
-LEGACY_CONTEXT_DIR = ".claude"
 CURRENT_PROJECT_POINTER_FILE = ".webnovel-current-project"
 _WIN_POSIX_DRIVE_RE = re.compile(r"^/(?P<drive>[a-zA-Z])/(?P<rest>.*)$")
 _WIN_WSL_MNT_DRIVE_RE = re.compile(r"^/mnt/(?P<drive>[a-zA-Z])/(?P<rest>.*)$")
@@ -189,16 +188,25 @@ def _is_project_root(path: Path) -> bool:
 
 def _resolve_workspace_root(project_root: Path) -> Path:
     for candidate in (project_root, *project_root.parents):
-        if (candidate / TARGET_CONTEXT_DIR).is_dir() or (candidate / LEGACY_CONTEXT_DIR).is_dir():
+        if (candidate / TARGET_CONTEXT_DIR).is_dir():
             return candidate
     if project_root.parent != project_root:
         return project_root.parent
     return project_root
 
 
+def _legacy_context_dir_name() -> str:
+    _ensure_scripts_path()
+    try:
+        from migrations.codex_migration import LEGACY_CONTEXT_DIR as legacy_context_dir
+    except Exception:
+        return ".legacy"
+    return str(legacy_context_dir)
+
+
 def _collect_pointer_state(*, workspace_root: Path) -> dict[str, Any]:
     codex_pointer = workspace_root / TARGET_CONTEXT_DIR / CURRENT_PROJECT_POINTER_FILE
-    legacy_pointer = workspace_root / LEGACY_CONTEXT_DIR / CURRENT_PROJECT_POINTER_FILE
+    legacy_pointer = workspace_root / _legacy_context_dir_name() / CURRENT_PROJECT_POINTER_FILE
 
     codex_state = _pointer_file_state(codex_pointer)
     legacy_state = _pointer_file_state(legacy_pointer)
@@ -279,8 +287,9 @@ def _path_key(path: Path) -> str:
 
 
 def _collect_legacy_state(*, project_root: Path, workspace_root: Path) -> dict[str, Any]:
-    workspace_legacy_dir = workspace_root / LEGACY_CONTEXT_DIR
-    project_legacy_dir = project_root / LEGACY_CONTEXT_DIR
+    legacy_context_dir = _legacy_context_dir_name()
+    workspace_legacy_dir = workspace_root / legacy_context_dir
+    project_legacy_dir = project_root / legacy_context_dir
     project_legacy_references_dir = project_legacy_dir / "references"
 
     return {

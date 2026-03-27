@@ -3,15 +3,15 @@
 on:
   push:
     paths:
-      - '.claude-plugin/marketplace.json'
-      - 'webnovel-writer/.claude-plugin/plugin.json'
+      - '.codex-plugin/marketplace.json'
+      - 'webnovel-writer/.codex-plugin/plugin.json'
       - 'webnovel-writer/scripts/sync_plugin_version.py'
       - 'README.md'
       - '.github/workflows/plugin-version.yml'
   pull_request:
     paths:
-      - '.claude-plugin/marketplace.json'
-      - 'webnovel-writer/.claude-plugin/plugin.json'
+      - '.codex-plugin/marketplace.json'
+      - 'webnovel-writer/.codex-plugin/plugin.json'
       - 'webnovel-writer/scripts/sync_plugin_version.py'
       - 'README.md'
       - '.github/workflows/plugin-version.yml'

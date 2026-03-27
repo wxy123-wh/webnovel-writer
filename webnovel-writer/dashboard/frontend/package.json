@@ -6,8 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:ps": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\build.ps1",
-    "build:vite": "vite build",
     "preview": "vite preview",
     "test": "node ./test/skills-page.component.test.cjs",
     "test:vitest": "vitest run --environment jsdom"

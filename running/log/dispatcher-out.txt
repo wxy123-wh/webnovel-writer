@@ -1,0 +1,5 @@
+==> Sisyphus dispatcher start max_dispatches=16 max_parallel=2
+==> Codex executable: C:\Users\wxy\.local\bin\codexx.cmd
+==> Worktree root: d:\code\webnovel-writer\.worktrees\sisyphus
+==> Dispatched T007 to branch codex/sisyphus/t007-20260328-055623-01-T007
+==> Dispatched T008 to branch codex/sisyphus/t008-20260328-055624-02-T008

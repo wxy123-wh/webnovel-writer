@@ -112,26 +112,26 @@ allowed-tools: Read Write Edit Grep Bash Task
 
 必须做：
 - 解析真实书项目根（book project_root）：必须包含 `.webnovel/state.json`。
-- 校验核心输入：`大纲/总纲.md`、`${CLAUDE_PLUGIN_ROOT}/scripts/extract_chapter_context.py` 存在。
+- 校验核心输入：`大纲/总纲.md`、`${CODEX_PLUGIN_ROOT}/scripts/extract_chapter_context.py` 存在。
 - 规范化变量：
-  - `WORKSPACE_ROOT`：Claude Code 打开的工作区根目录（可能是书项目的父目录，例如 `D:\wk\xiaoshuo`）
+  - `WORKSPACE_ROOT`：Codex 打开的工作区根目录（可能是书项目的父目录，例如 `D:\wk\xiaoshuo`）
   - `PROJECT_ROOT`：真实书项目根目录（必须包含 `.webnovel/state.json`，例如 `D:\wk\xiaoshuo\凡人资本论`）
-  - `SKILL_ROOT`：skill 所在目录（固定 `${CLAUDE_PLUGIN_ROOT}/skills/webnovel-write`）
-  - `SCRIPTS_DIR`：脚本目录（固定 `${CLAUDE_PLUGIN_ROOT}/scripts`）
+  - `SKILL_ROOT`：skill 所在目录（固定 `${CODEX_PLUGIN_ROOT}/skills/webnovel-write`）
+  - `SCRIPTS_DIR`：脚本目录（固定 `${CODEX_PLUGIN_ROOT}/scripts`）
   - `chapter_num`：当前章号（整数）
   - `chapter_padded`：四位章号（如 `0007`）
 
 环境设置（bash 命令执行前）：
 ```bash
-export WORKSPACE_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
-export SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT is required}/scripts"
-export SKILL_ROOT="${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT is required}/skills/webnovel-write"
+export WORKSPACE_ROOT="${CODEX_PROJECT_DIR:-$PWD}"
+export SCRIPTS_DIR="${CODEX_PLUGIN_ROOT:?CODEX_PLUGIN_ROOT is required}/scripts"
+export SKILL_ROOT="${CODEX_PLUGIN_ROOT:?CODEX_PLUGIN_ROOT is required}/skills/webnovel-write"
 
 python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${WORKSPACE_ROOT}" preflight
 export PROJECT_ROOT="$(python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${WORKSPACE_ROOT}" where)"
 ```
 
-**硬门槛**：`preflight` 必须成功。它统一校验 `CLAUDE_PLUGIN_ROOT` 派生出的 `SKILL_ROOT` / `SCRIPTS_DIR`、`webnovel.py`、`extract_chapter_context.py` 和解析出的 `PROJECT_ROOT`。任一失败都立即阻断。
+**硬门槛**：`preflight` 必须成功。它统一校验 `CODEX_PLUGIN_ROOT` 派生出的 `SKILL_ROOT` / `SCRIPTS_DIR`、`webnovel.py`、`extract_chapter_context.py` 和解析出的 `PROJECT_ROOT`。任一失败都立即阻断。
 
 输出：
 - “已就绪输入”与“缺失输入”清单；缺失则阻断并提示先补齐。

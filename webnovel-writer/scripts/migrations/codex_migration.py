@@ -5,7 +5,7 @@
 Codex runtime migration.
 
 目标：
-- 将项目/工作区内历史 `.claude` 运行时痕迹收敛到 `.codex` 优先路径。
+- 将项目/工作区内历史 legacy 运行时痕迹收敛到 `.codex` 优先路径。
 - 产出可追踪的迁移报告（含 dry-run）。
 """
 

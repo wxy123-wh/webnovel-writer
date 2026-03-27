@@ -177,7 +177,7 @@ def test_build_chapter_context_payload_includes_contract_sections(tmp_path):
     outline_dir.mkdir(parents=True, exist_ok=True)
     (outline_dir / "第1卷 详细大纲.md").write_text("### 第3章：测试标题\n测试大纲", encoding="utf-8")
 
-    refs_dir = tmp_path / ".claude" / "references"
+    refs_dir = tmp_path / ".codex" / "references"
     refs_dir.mkdir(parents=True, exist_ok=True)
     (refs_dir / "genre-profiles.md").write_text("## xuanhuan\n- 升级线清晰", encoding="utf-8")
     (refs_dir / "reading-power-taxonomy.md").write_text("## xuanhuan\n- 悬念钩优先", encoding="utf-8")

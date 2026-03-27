@@ -9,7 +9,7 @@ model: inherit
 
 > **职责**: 设定守卫者，执行第二防幻觉定律（设定即物理）。
 
-> **输出格式**: 遵循 `${CLAUDE_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
+> **输出格式**: 遵循 `${CODEX_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
 
 ## 检查范围
 
@@ -201,7 +201,7 @@ model: inherit
 对于发现的严重级别（`critical`）问题，自动标记到 `invalid_facts`（状态为 `pending`）：
 
 ```bash
-python -X utf8 "${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT is required}/scripts/webnovel.py" --project-root "{PROJECT_ROOT}" index mark-invalid \
+python -X utf8 "${CODEX_PLUGIN_ROOT:?CODEX_PLUGIN_ROOT is required}/scripts/webnovel.py" --project-root "{PROJECT_ROOT}" index mark-invalid \
   --source-type entity \
   --source-id {entity_id} \
   --reason "{问题描述}" \

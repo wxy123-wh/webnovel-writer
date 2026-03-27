@@ -319,6 +319,10 @@ def test_preflight_json_includes_binding_details(monkeypatch, tmp_path, capsys):
 def test_where_fails_with_clear_reason_when_state_json_missing(monkeypatch, tmp_path, capsys):
     module = _load_webnovel_module()
 
+    # Clear env vars that previous tests may have set (e.g. CODEX_HOME pointing to a valid registry)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("WEBNOVEL_PROJECT_ROOT", raising=False)
+
     invalid_root = tmp_path / "workspace"
     (invalid_root / ".webnovel").mkdir(parents=True, exist_ok=True)
 
@@ -375,8 +379,8 @@ def test_quality_trend_report_writes_to_book_root_when_input_is_workspace_root(t
     workspace_root = (tmp_path / "workspace").resolve()
     book_root = (workspace_root / "凡人资本论").resolve()
 
-    (workspace_root / ".claude").mkdir(parents=True, exist_ok=True)
-    (workspace_root / ".claude" / ".webnovel-current-project").write_text(str(book_root), encoding="utf-8")
+    (workspace_root / ".codex").mkdir(parents=True, exist_ok=True)
+    (workspace_root / ".codex" / ".webnovel-current-project").write_text(str(book_root), encoding="utf-8")
 
     (book_root / ".webnovel").mkdir(parents=True, exist_ok=True)
     (book_root / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")

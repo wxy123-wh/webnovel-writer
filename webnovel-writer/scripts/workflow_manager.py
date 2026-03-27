@@ -106,7 +106,7 @@ def expected_step_owner(command: str, step_id: str) -> str:
     """Resolve expected caller owner by command + step id.
 
     Returns concise owner tags to align with
-    `.claude/references/claude-code-call-matrix.md`.
+    `.codex/references/codex-code-call-matrix.md`.
     """
     if command == "webnovel-write":
         mapping = {

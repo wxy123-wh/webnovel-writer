@@ -459,7 +459,7 @@ class GoldenThreeChecker:
         elif self.mode == "llm":
             prompt = self.generate_llm_prompt()
             print("=" * 60)
-            print("LLM 评估模式：请将以下 Prompt 发送给 Claude/GPT")
+            print("LLM 评估模式：请将以下 Prompt 发送给 Codex/GPT")
             print("=" * 60)
             print("\n--- PROMPT START ---\n")
             print(prompt[:2000] + "\n...[内容已截断，完整版见输出文件]...")
@@ -473,7 +473,7 @@ class GoldenThreeChecker:
                 f.write(prompt)
             print(f"📄 完整 Prompt 已保存至: {prompt_file}")
             print("\n💡 使用方法：")
-            print("   1. 将 Prompt 发送给 Claude/GPT")
+            print("   1. 将 Prompt 发送给 Codex/GPT")
             print("   2. 获取 XML 格式的评估结果")
             print("   3. 运行: python golden_three_checker.py --parse-response <response.xml>")
 

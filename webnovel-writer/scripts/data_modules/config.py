@@ -30,17 +30,14 @@ def _iter_user_home_candidates() -> list[Path]:
     for key in (
         "WEBNOVEL_HOME",
         "WEBNOVEL_CODEX_HOME",
-        "WEBNOVEL_CLAUDE_HOME",
         "CODEX_HOME",
-        "CLAUDE_HOME",
     ):
         raw = os.environ.get(key)
         if raw:
             homes.append(_normalize_home(raw))
 
-    # 默认优先 Codex，再兼容 Claude
+    # 默认使用 Codex 运行时目录
     homes.append((Path.home() / ".codex").resolve())
-    homes.append((Path.home() / ".claude").resolve())
 
     deduped: list[Path] = []
     seen: set[str] = set()
@@ -80,7 +77,7 @@ def _load_dotenv():
 
     约定：
     - 项目级 `.env`（当前工作目录下）优先；
-    - 全局 `.env` 作为兜底：`~/.codex/webnovel-writer/.env`（兼容 `~/.claude/...`）
+    - 全局 `.env` 作为兜底：`~/.codex/webnovel-writer/.env`
     """
     # 1) 当前目录（常见：用户从项目根目录执行）
     _load_dotenv_file(Path.cwd() / ".env", override=False)
@@ -370,7 +367,7 @@ def get_config(project_root: Optional[Path] = None) -> DataModulesConfig:
         # 默认不要盲目以 CWD 作为 project_root（很容易写到错误目录）。
         # 使用统一的 project_locator 自动探测：
         # - 支持 WEBNOVEL_PROJECT_ROOT
-        # - 支持 `.codex/.webnovel-current-project` / `.claude/...` 指针文件
+        # - 支持 `.codex/.webnovel-current-project` 指针文件
         # - 支持从当前目录/父目录寻找 `.webnovel/state.json`
         from project_locator import resolve_project_root
 

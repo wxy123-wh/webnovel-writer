@@ -1,4 +1,4 @@
-﻿import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import ContextMenuSurface from './ContextMenuSurface.jsx'
 
 const ContextMenuContext = createContext(null)
@@ -48,6 +48,10 @@ export function ContextMenuProvider({ children }) {
     }, [])
 
     const openForEvent = useCallback((event, config) => {
+        // 默认右键打开工作台菜单；按住 Alt 时放行原生菜单作为兜底。
+        if (event.altKey) {
+            return
+        }
         event.preventDefault()
         openMenu({
             ...config,

@@ -40,6 +40,18 @@ class SettingsFileReadResponse(BaseModel):
     content: str = Field(default="")
 
 
+class SettingsFileWriteRequest(BaseModel):
+    workspace: WorkspaceContext = Field(default_factory=WorkspaceContext)
+    path: str = Field(default="")
+    content: str = Field(default="")
+
+
+class SettingsFileWriteResponse(BaseModel):
+    status: str = Field(default="placeholder")
+    path: str = Field(default="")
+    bytes_written: int = Field(default=0)
+
+
 class DictionaryEntry(BaseModel):
     id: str = Field(default="dict-placeholder")
     term: str = Field(default="placeholder")

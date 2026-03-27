@@ -57,20 +57,56 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _is_project_root(path: Path) -> bool:
+    return (path / ".webnovel" / "state.json").is_file()
+
+
+def _discover_project_root() -> Path | None:
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
+        if _is_project_root(candidate):
+            return candidate
+
+    # 在仓库根目录下自动探测常见项目目录（例如 demo-novel）。
+    search_roots = [cwd, *cwd.parents[:2]]
+    for root in search_roots:
+        try:
+            children = list(root.iterdir())
+        except OSError:
+            continue
+        for child in children:
+            if child.is_dir() and _is_project_root(child):
+                return child.resolve()
+    return None
+
+
 def _resolve_project_root(project_root: str) -> Path:
-    if not project_root.strip():
+    root_hint = project_root.strip() or os.environ.get("WEBNOVEL_PROJECT_ROOT", "").strip()
+    if root_hint:
+        resolved = Path(root_hint).expanduser().resolve()
+    else:
+        resolved = _discover_project_root()
+
+    if resolved is None:
         raise SplitServiceError(
             status_code=400,
             error_code="OUTLINE_PROJECT_ROOT_REQUIRED",
             message="workspace.project_root is required",
+            details={"action": "provide workspace.project_root or WEBNOVEL_PROJECT_ROOT"},
         )
 
-    resolved = Path(project_root).expanduser().resolve()
     if not resolved.is_dir():
         raise SplitServiceError(
             status_code=404,
             error_code="OUTLINE_PROJECT_ROOT_NOT_FOUND",
             message="workspace.project_root does not exist",
+            details={"project_root": str(resolved)},
+        )
+    if not _is_project_root(resolved):
+        raise SplitServiceError(
+            status_code=400,
+            error_code="OUTLINE_PROJECT_ROOT_INVALID",
+            message="workspace.project_root must contain .webnovel/state.json",
             details={"project_root": str(resolved)},
         )
     return resolved

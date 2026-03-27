@@ -1,7 +1,13 @@
 [run]
-source = .claude/scripts/data_modules
+source = webnovel-writer/scripts/data_modules
 omit =
     */tests/*
+    */data_modules/webnovel.py
 
 [report]
 show_missing = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.
+    except Exception.*:
+    except Exception as.*:

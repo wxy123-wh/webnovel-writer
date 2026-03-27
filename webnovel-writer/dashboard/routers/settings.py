@@ -22,6 +22,8 @@ from ..models.settings import (
     SettingsFileReadResponse,
     SettingsFileTreeQuery,
     SettingsFileTreeResponse,
+    SettingsFileWriteRequest,
+    SettingsFileWriteResponse,
 )
 from ..services.dictionary import (
     DictionaryServiceError,
@@ -30,6 +32,7 @@ from ..services.dictionary import (
     list_settings_tree as list_settings_tree_service,
     read_settings_file as read_settings_file_service,
     resolve_conflict as resolve_conflict_service,
+    write_settings_file as write_settings_file_service,
 )
 from ..services.dictionary.service import list_dictionary_conflicts as list_dictionary_conflicts_service
 
@@ -66,6 +69,20 @@ def read_settings_file(query: SettingsFileReadQuery = Depends()):
             path=query.path,
         )
         return SettingsFileReadResponse(status="ok", path=query.path, content=content)
+    except DictionaryServiceError as exc:
+        return _error_response(exc)
+
+
+@files_router.post("/write", response_model=SettingsFileWriteResponse, responses=WRITE_ERROR_RESPONSES)
+def write_settings_file(request: SettingsFileWriteRequest):
+    try:
+        bytes_written = write_settings_file_service(
+            workspace_id=request.workspace.workspace_id,
+            project_root=request.workspace.project_root,
+            path=request.path,
+            content=request.content,
+        )
+        return SettingsFileWriteResponse(status="ok", path=request.path, bytes_written=bytes_written)
     except DictionaryServiceError as exc:
         return _error_response(exc)
 

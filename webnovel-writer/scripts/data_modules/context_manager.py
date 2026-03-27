@@ -288,10 +288,9 @@ class ContextManager:
         return signal
 
     def _read_shared_reference(self, filename: str) -> str:
-        """读取共享参考文件，优先项目内 context 目录，再回退到插件内置 references。"""
+        """读取共享参考文件，优先项目内 `.codex/references`，再回退到插件内置 references。"""
         candidates = [
             self.config.project_root / ".codex" / "references" / filename,
-            self.config.project_root / ".claude" / "references" / filename,
             Path(__file__).resolve().parents[2] / "references" / filename,
         ]
         for path in candidates:

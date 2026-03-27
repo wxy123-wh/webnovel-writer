@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PageScaffold from '../components/PageScaffold.jsx'
 import { useContextMenu } from '../components/ContextMenuProvider.jsx'
+import {
+    formatCodexBridgeError,
+    openCodexFileEditDialog,
+} from '../api/codexBridge.js'
 import {
     extractSettingDictionary,
     fetchSettingsFileTree,
@@ -9,6 +13,7 @@ import {
     listSettingDictionary,
     readSettingsFile,
     resolveDictionaryConflict,
+    writeSettingsFile,
 } from '../api/settings.js'
 
 const LAYOUT_STYLE = {
@@ -64,6 +69,14 @@ const BUTTON_STYLE = {
     cursor: 'pointer',
 }
 
+const EDITOR_STYLE = {
+    ...PREVIEW_STYLE,
+    width: '100%',
+    resize: 'vertical',
+    fontFamily: 'inherit',
+}
+const CODEX_SETTINGS_FILE_EDIT_PROMPT = '请直接修改选中的设定文本，保持术语与属性键一致并提升表达清晰度。'
+
 function collectFirstFilePath(nodes) {
     const stack = Array.isArray(nodes) ? [...nodes] : []
     while (stack.length > 0) {
@@ -77,6 +90,31 @@ function collectFirstFilePath(nodes) {
         }
     }
     return ''
+}
+
+function buildSelectionPayload(textareaRef) {
+    const element = textareaRef.current
+    if (!element) {
+        return { selectionStart: 0, selectionEnd: 0, selectionText: '' }
+    }
+    const selectionStart = element.selectionStart ?? 0
+    const selectionEnd = element.selectionEnd ?? 0
+    const value = typeof element.value === 'string' ? element.value : ''
+    return {
+        selectionStart,
+        selectionEnd,
+        selectionText: value.slice(selectionStart, selectionEnd),
+    }
+}
+
+function hasValidSelection(selection) {
+    if (!selection || typeof selection !== 'object') {
+        return false
+    }
+    if (selection.selectionEnd <= selection.selectionStart) {
+        return false
+    }
+    return Boolean(selection.selectionText)
 }
 
 function TreeNodeList({ nodes, selectedPath, onSelect, depth = 0 }) {
@@ -127,16 +165,20 @@ function TreeNodeList({ nodes, selectedPath, onSelect, depth = 0 }) {
 
 export default function SettingsPage() {
     const { openForEvent } = useContextMenu()
+    const editorRef = useRef(null)
     const [lastAction, setLastAction] = useState('尚未触发')
     const [errorMessage, setErrorMessage] = useState('')
     const [fileNodes, setFileNodes] = useState([])
     const [dictionaryItems, setDictionaryItems] = useState([])
     const [selectedPath, setSelectedPath] = useState('')
     const [selectedContent, setSelectedContent] = useState('')
+    const [draftContent, setDraftContent] = useState('')
     const [loadingTree, setLoadingTree] = useState(true)
     const [loadingDictionary, setLoadingDictionary] = useState(true)
     const [loadingContent, setLoadingContent] = useState(false)
+    const [savingContent, setSavingContent] = useState(false)
     const [extracting, setExtracting] = useState(false)
+    const [launchingCodexFileEdit, setLaunchingCodexFileEdit] = useState(false)
     const [modeTag, setModeTag] = useState('api')
 
     const setPageError = useCallback(error => {
@@ -161,6 +203,7 @@ export default function SettingsPage() {
     const readFile = useCallback(async path => {
         if (!path) {
             setSelectedContent('')
+            setDraftContent('')
             return
         }
 
@@ -169,6 +212,7 @@ export default function SettingsPage() {
             const response = await readSettingsFile({ path })
             setSelectedPath(path)
             setSelectedContent(response.content || '')
+            setDraftContent(response.content || '')
             setErrorMessage('')
             setModeTag(isMockResponse(response) ? 'mock' : 'api')
         } catch (error) {
@@ -177,6 +221,26 @@ export default function SettingsPage() {
             setLoadingContent(false)
         }
     }, [setPageError])
+
+    const saveFile = useCallback(async () => {
+        if (!selectedPath) {
+            return
+        }
+
+        setSavingContent(true)
+        try {
+            const response = await writeSettingsFile({ path: selectedPath, content: draftContent })
+            setSelectedContent(draftContent)
+            setErrorMessage('')
+            setModeTag(isMockResponse(response) ? 'mock' : 'api')
+            setLastAction(`settings.write -> ${selectedPath}`)
+        } catch (error) {
+            setPageError(error)
+            setLastAction(`settings.write -> error(${error?.errorCode || 'unknown_error'})`)
+        } finally {
+            setSavingContent(false)
+        }
+    }, [draftContent, selectedPath, setPageError])
 
     const refreshTree = useCallback(async () => {
         setLoadingTree(true)
@@ -302,6 +366,68 @@ export default function SettingsPage() {
         })
     }, [handleDictionaryAction, openForEvent])
 
+    const runCodexFileEdit = useCallback(async selection => {
+        if (!selectedPath) {
+            setLastAction('codex-file-edit -> 请先选择目标文件')
+            return
+        }
+        if (draftContent !== selectedContent) {
+            setLastAction('codex-file-edit -> 请先保存本地改动，再启动 Codex 文件编辑')
+            return
+        }
+        if (!hasValidSelection(selection)) {
+            setLastAction('codex-file-edit -> 请先选中有效文本')
+            return
+        }
+
+        setLaunchingCodexFileEdit(true)
+        setErrorMessage('')
+        try {
+            const response = await openCodexFileEditDialog({
+                filePath: selectedPath,
+                selectionStart: selection.selectionStart,
+                selectionEnd: selection.selectionEnd,
+                selectionText: selection.selectionText,
+                instruction: CODEX_SETTINGS_FILE_EDIT_PROMPT,
+                sourceId: 'settings.editor.textarea',
+            })
+            setLastAction(
+                `codex-file-edit -> ${response.target_file || selectedPath} (${response.prompt_file || 'no-prompt-file'}), 完成后请重新读取文件`,
+            )
+        } catch (error) {
+            setPageError(error)
+            setLastAction(`codex-file-edit -> error(${error?.errorCode || 'unknown_error'})`)
+            setErrorMessage(formatCodexBridgeError(error, 'CODEX_FILE_EDIT_DIALOG_OPEN_FAILED'))
+        } finally {
+            setLaunchingCodexFileEdit(false)
+        }
+    }, [draftContent, selectedContent, selectedPath, setPageError])
+
+    const openSettingsEditorMenu = useCallback(event => {
+        const selection = buildSelectionPayload(editorRef)
+        const hasUnsavedChanges = draftContent !== selectedContent
+        openForEvent(event, {
+            sourceId: 'settings.editor.textarea',
+            meta: {
+                selection,
+            },
+            onAction: payload => {
+                if (payload.actionId === 'codex-file-edit') {
+                    void runCodexFileEdit(payload.meta?.selection || selection)
+                }
+            },
+            items: [
+                {
+                    id: 'codex-file-edit',
+                    actionId: 'codex-file-edit',
+                    label: 'Codex直接改文件',
+                    shortcut: 'C',
+                    disabled: !selectedPath || hasUnsavedChanges || !hasValidSelection(selection),
+                },
+            ],
+        })
+    }, [draftContent, openForEvent, runCodexFileEdit, selectedContent, selectedPath])
+
     const runExtract = useCallback(async () => {
         setExtracting(true)
         try {
@@ -329,13 +455,16 @@ export default function SettingsPage() {
         <PageScaffold
             title="设定集"
             badge="Settings & Dictionary"
-            description="双栏同屏：左侧设定文件树，右侧词典条目。支持词典抽离、冲突处理与 mock 降级。"
+            description="双栏同屏：左侧设定文件树，右侧词典条目。选中设定文本后右键可直接拉起 Codex 改文件。"
         >
             <div style={LAYOUT_STYLE}>
                 <div className="card">
                     <div className="card-header">
                         <span className="card-title">设定文件树</span>
                         <span className="card-badge badge-green">mode: {modeTag.toUpperCase()}</span>
+                        <span className="card-badge badge-purple">
+                            {launchingCodexFileEdit ? 'codex: launching' : 'codex: ready'}
+                        </span>
                     </div>
                     {loadingTree ? <p style={{ margin: 0 }}>文件树加载中...</p> : null}
                     {!loadingTree && fileNodes.length === 0 ? <p style={{ margin: 0 }}>未发现设定集文件。</p> : null}
@@ -344,9 +473,38 @@ export default function SettingsPage() {
                         <div style={{ fontSize: 12, color: '#8f7f5c', marginBottom: 6 }}>
                             当前文件: {selectedPath || '未选择'}
                         </div>
-                        <div style={PREVIEW_STYLE}>
-                            {loadingContent ? '文件读取中...' : selectedContent || '请选择文件进行预览。'}
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                            <button
+                                type="button"
+                                style={BUTTON_STYLE}
+                                disabled={!selectedPath || loadingContent || savingContent || draftContent === selectedContent}
+                                onClick={() => {
+                                    void saveFile()
+                                }}
+                            >
+                                {savingContent ? '保存中...' : '保存文件'}
+                            </button>
+                            <button
+                                type="button"
+                                style={BUTTON_STYLE}
+                                disabled={!selectedPath || loadingContent || savingContent || draftContent === selectedContent}
+                                onClick={() => setDraftContent(selectedContent)}
+                            >
+                                撤销改动
+                            </button>
                         </div>
+                        <textarea
+                            ref={editorRef}
+                            style={EDITOR_STYLE}
+                            value={loadingContent ? '' : draftContent}
+                            onChange={event => setDraftContent(event.target.value)}
+                            onContextMenu={openSettingsEditorMenu}
+                            readOnly={loadingContent || !selectedPath}
+                            placeholder={loadingContent ? '文件读取中...' : '请选择文件进行预览。'}
+                        />
+                        <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#8f7f5c' }}>
+                            操作提示: 先保存本地改动，再选中文本并右键，选择“Codex直接改文件”。
+                        </p>
                     </div>
                 </div>
 
@@ -404,7 +562,7 @@ export default function SettingsPage() {
             <div className="card">
                 <div className="card-header">
                     <span className="card-title">协议回执</span>
-                    <span className="card-badge badge-blue">sourceId: settings.dictionary.entry</span>
+                    <span className="card-badge badge-blue">sourceId: settings.dictionary.entry / settings.editor.textarea</span>
                 </div>
                 <p style={{ margin: 0 }}>最近动作: {lastAction}</p>
                 {errorMessage ? <p style={{ margin: '8px 0 0', color: '#b40000' }}>错误: {errorMessage}</p> : null}

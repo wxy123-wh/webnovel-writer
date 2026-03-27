@@ -58,7 +58,7 @@ parallel Task(agent, {chapter, chapter_file, project_root}) for agent in selecte
 
 ## 输出契约（统一）
 
-每个 checker 返回值必须遵循 `${CLAUDE_PLUGIN_ROOT}/references/checker-output-schema.md`：
+每个 checker 返回值必须遵循 `${CODEX_PLUGIN_ROOT}/references/checker-output-schema.md`：
 - 必含：`agent`、`chapter`、`overall_score`、`pass`、`issues`、`metrics`、`summary`
 - 允许扩展字段（如 `hard_violations`、`soft_suggestions`），但不得替代必填字段
 

@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from .models.common import ApiErrorResponse
 from .path_guard import safe_resolve
 from .routers import (
+    codex_bridge_router,
     edit_assist_router,
     outlines_router,
     runtime_router,
@@ -152,13 +153,13 @@ def _webnovel_dir_from_app(app: "FastAPI") -> Path:
 
 
 def _resolve_project_root_from_pointer() -> Path | None:
-    """P0-B 修复保留：从 .codex / .claude 目录下的 pointer 文件自动恢复 project_root。
+    """P0-B 修复保留：从 `.codex` 目录下的 pointer 文件自动恢复 project_root。
 
     在 uvicorn --reload 场景下，app.state 会被重置，
     通过此函数可以从持久化的 pointer 文件恢复，无需重启服务或重新传参。
     """
     cwd = Path.cwd()
-    for dirname in (".codex", ".claude"):
+    for dirname in (".codex",):
         pointer = cwd / dirname / ".webnovel-current-project"
         if not pointer.is_file():
             continue
@@ -277,6 +278,7 @@ def create_app(
     app.include_router(settings_dictionary_router)
     app.include_router(outlines_router)
     app.include_router(edit_assist_router)
+    app.include_router(codex_bridge_router)
 
     # ===========================================================
     # API：项目元信息

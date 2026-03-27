@@ -36,15 +36,26 @@ def _workspace_payload(project_root: Path) -> dict[str, str]:
     return {"workspace_id": "workspace-default", "project_root": str(project_root)}
 
 
+def _legacy_context_dir() -> str:
+    return runtime_service_module._legacy_context_dir_name()
+
+
 def _create_legacy_pointer(workspace_root: Path, project_root: Path) -> Path:
-    pointer = workspace_root / ".claude" / ".webnovel-current-project"
+    pointer = workspace_root / _legacy_context_dir() / ".webnovel-current-project"
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(str(project_root), encoding="utf-8")
+    return pointer
+
+
+def _create_codex_pointer(workspace_root: Path, project_root: Path) -> Path:
+    pointer = workspace_root / ".codex" / ".webnovel-current-project"
     pointer.parent.mkdir(parents=True, exist_ok=True)
     pointer.write_text(str(project_root), encoding="utf-8")
     return pointer
 
 
 def _create_legacy_reference(project_root: Path) -> Path:
-    legacy_file = project_root / ".claude" / "references" / "world.md"
+    legacy_file = project_root / _legacy_context_dir() / "references" / "world.md"
     legacy_file.parent.mkdir(parents=True, exist_ok=True)
     legacy_file.write_text("# world", encoding="utf-8")
     return legacy_file
@@ -53,7 +64,7 @@ def _create_legacy_reference(project_root: Path) -> Path:
 def test_runtime_profile_returns_detected_state_and_preview():
     workspace_root, project_root = _new_workspace_root("runtime-profile")
     try:
-        _create_legacy_pointer(project_root, project_root)
+        _create_codex_pointer(workspace_root, project_root)
         _create_legacy_reference(project_root)
 
         app = _build_app()
@@ -67,12 +78,12 @@ def test_runtime_profile_returns_detected_state_and_preview():
         payload = response.json()
         assert payload["runtime_name"] == "codex"
         assert payload["workspace"]["project_root"] == str(project_root)
-        assert payload["pointer"]["workspace_root"] == str(project_root)
-        assert payload["pointer"]["status"] == "legacy_only"
+        assert payload["pointer"]["workspace_root"] == str(workspace_root)
+        assert payload["pointer"]["status"] == "codex_only"
         assert payload["legacy"]["project_legacy_reference_files"] == 1
         assert payload["migration_preview"]["dry_run"] is True
         assert payload["migration_preview"]["migratable_items"] >= 1
-        assert any(item["kind"] == "workspace_pointer" for item in payload["migration_preview"]["moved"])
+        assert any(item["kind"] == "references_directory" for item in payload["migration_preview"]["moved"])
     finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 

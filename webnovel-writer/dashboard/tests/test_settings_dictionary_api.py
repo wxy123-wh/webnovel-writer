@@ -71,6 +71,28 @@ def test_settings_files_tree_and_read():
             )
             assert read_response.status_code == 200
             assert "火焰城" in read_response.json()["content"]
+
+            write_response = client.post(
+                "/api/settings/files/write",
+                json={
+                    "workspace": _make_workspace_payload(project_root),
+                    "path": "设定集/世界/地理.md",
+                    "content": "苍月港(地点): region=南境; ruler=城主林川\n",
+                },
+            )
+            assert write_response.status_code == 200
+            assert write_response.json()["bytes_written"] > 0
+
+            verify_response = client.get(
+                "/api/settings/files/read",
+                params={
+                    "workspace_id": "workspace-default",
+                    "project_root": str(project_root),
+                    "path": "设定集/世界/地理.md",
+                },
+            )
+            assert verify_response.status_code == 200
+            assert "苍月港" in verify_response.json()["content"]
     finally:
         shutil.rmtree(project_root, ignore_errors=True)
 

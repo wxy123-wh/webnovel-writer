@@ -32,8 +32,7 @@ python -m dashboard.server --no-browser
 ```bash
 cd dashboard/frontend
 npm install
-npm run build          # ✅ 跨平台（vite build）
-npm run build:ps       # Windows 专用 PowerShell 脚本（可选）
+npm run build          # ✅ 唯一前端构建入口（vite build）
 ```
 
 ---
@@ -94,7 +93,7 @@ npm run build:ps       # Windows 专用 PowerShell 脚本（可选）
 
 **P1-B：修复 npm build 仅限 Windows 的问题**
 - `dashboard/frontend/package.json`：`build` 脚本改为 `vite build`（跨平台）
-- 原 PowerShell 脚本保留为 `build:ps`（Windows 专用可选脚本）
+- 统一为单一构建入口，移除 PowerShell 专用构建脚本，避免并行链路导致产物不一致
 
 **P1-F：添加 `/health` 健康检查端点**
 - `dashboard/app.py`：新增 `GET /health`，始终返回 `{"status": "ok", "version": "0.1.0"}`
@@ -181,3 +180,10 @@ pip install -r scripts/requirements.txt
 pip install -r dashboard/requirements-dev.txt
 pip install -r scripts/requirements-dev.txt
 ```
+
+### 2026-03-28 - 开发环境工具链修复
+
+**P1-H：修复 PowerShell 下 Volta(npm) 包装脚本挂起问题**
+- **现象**：`opencode` 等经由 npm 体系全局安装并生成的 `.ps1` 包装脚本，有时候能够有输出但大部分时间响应异常、卡死无法使用。
+- **原因**：由于 PowerShell 解析行为的异常，自动生成的包装脚本中的 `if ($MyInvocation.ExpectingInput)` 在没有前置管道数据的情况下，仍然错误地使进程挂起并一直等待标准输入 (`$input`)。
+- **修复**：修改了系统路径下的包装脚本（如 `opencode.ps1`），移除了所有关于管道输入的分支判定，强制脚本直接传递参数并启动 node 进程，彻底解决了命令行响应缓慢及阻塞不返回的问题。

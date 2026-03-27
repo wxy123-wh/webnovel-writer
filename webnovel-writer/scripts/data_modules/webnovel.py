@@ -236,7 +236,7 @@ def _inspect_registry_state(project_root: Optional[Path], workspace_root: Option
     if not registry_candidates:
         result["status"] = "error"
         result["reason"] = "registry_path_unavailable"
-        result["suggestion"] = "set CODEX_HOME/CLAUDE_HOME and rerun preflight"
+        result["suggestion"] = "set CODEX_HOME and rerun preflight"
         return result
 
     existing_files = [path for path in registry_candidates if path.is_file()]
@@ -1019,7 +1019,7 @@ def cmd_use(args: argparse.Namespace) -> int:
 
 
 def cmd_dashboard(args: argparse.Namespace) -> int:
-    """从统一 CLI 启动 Dashboard（适配 Codex/Claude 任意工作目录）。"""
+    """从统一 CLI 启动 Dashboard（适配 Codex 工作目录）。"""
     project_root = _resolve_root(args.project_root)
     plugin_root = _scripts_dir().parent
 
@@ -1053,7 +1053,7 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
 def _parse_migrate_codex_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="webnovel migrate codex",
-        description="迁移历史 .claude 痕迹到 .codex 优先路径",
+        description="迁移历史 legacy 运行时痕迹到 .codex 路径",
     )
     parser.add_argument("--dry-run", action="store_true", help="仅生成迁移报告，不实际改动文件")
     return parser.parse_args(argv)

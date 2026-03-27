@@ -81,7 +81,7 @@ def test_resolve_project_root_uses_workspace_pointer(tmp_path):
     from project_locator import resolve_project_root, write_current_project_pointer
 
     workspace = tmp_path / "workspace"
-    (workspace / ".claude").mkdir(parents=True, exist_ok=True)
+    (workspace / ".codex").mkdir(parents=True, exist_ok=True)
 
     project_root = workspace / "凡人资本论"
     (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
@@ -102,7 +102,6 @@ def test_write_current_project_pointer_prefers_codex_dir(tmp_path):
 
     workspace = tmp_path / "workspace"
     (workspace / ".codex").mkdir(parents=True, exist_ok=True)
-    (workspace / ".claude").mkdir(parents=True, exist_ok=True)
 
     project_root = workspace / "凡人资本论"
     (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
@@ -120,9 +119,9 @@ def test_resolve_project_root_ignores_stale_pointer_and_fallbacks(tmp_path):
     from project_locator import resolve_project_root
 
     workspace = tmp_path / "workspace"
-    (workspace / ".claude").mkdir(parents=True, exist_ok=True)
+    (workspace / ".codex").mkdir(parents=True, exist_ok=True)
     # stale pointer
-    (workspace / ".claude" / ".webnovel-current-project").write_text(
+    (workspace / ".codex" / ".webnovel-current-project").write_text(
         str(workspace / "missing-project"), encoding="utf-8"
     )
 

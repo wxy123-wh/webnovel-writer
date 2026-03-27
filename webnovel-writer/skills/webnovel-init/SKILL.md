@@ -30,8 +30,8 @@ allowed-tools: Read Write Edit Grep Bash Task AskUserQuestion WebSearch WebFetch
 - L3：市场趋势类、时效类资料仅在用户明确要求时加载。
 
 路径约定：
-- `references/...` 相对当前 skill 目录（`${CLAUDE_PLUGIN_ROOT}/skills/webnovel-init/references/...`）。
-- `templates/...` 相对插件根目录（`${CLAUDE_PLUGIN_ROOT}/templates/...`）。
+- `references/...` 相对当前 skill 目录（`${CODEX_PLUGIN_ROOT}/skills/webnovel-init/references/...`）。
+- `templates/...` 相对插件根目录（`${CODEX_PLUGIN_ROOT}/templates/...`）。
 
 默认加载清单：
 - L1（启动前）：`references/genre-tropes.md`
@@ -110,7 +110,7 @@ allowed-tools: Read Write Edit Grep Bash Task AskUserQuestion WebSearch WebFetch
 
 ## 工具策略（按需）
 
-- `Read/Grep`：读取项目上下文与参考文件（`README.md`、`CLAUDE.md`、`templates/genres/*`、`references/*`）。
+- `Read/Grep`：读取项目上下文与参考文件（`README.md`、`CODEX.md`、`templates/genres/*`、`references/*`）。
 - `Bash`：执行 `init_project.py`、文件存在性检查、最小验证命令。
 - `Task`：拆分并行子任务（如题材映射、约束包候选生成、文件验证）。
 - `AskUserQuestion`：用于关键分歧裁决、候选方案选择、最终确认。
@@ -127,19 +127,19 @@ allowed-tools: Read Write Edit Grep Bash Task AskUserQuestion WebSearch WebFetch
 
 环境设置（bash 命令执行前）：
 ```bash
-export WORKSPACE_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
+export WORKSPACE_ROOT="${CODEX_PROJECT_DIR:-$PWD}"
 
-if [ -z "${CLAUDE_PLUGIN_ROOT}" ] || [ ! -d "${CLAUDE_PLUGIN_ROOT}/scripts" ]; then
-  echo "ERROR: 未设置 CLAUDE_PLUGIN_ROOT 或缺少目录: ${CLAUDE_PLUGIN_ROOT}/scripts" >&2
+if [ -z "${CODEX_PLUGIN_ROOT}" ] || [ ! -d "${CODEX_PLUGIN_ROOT}/scripts" ]; then
+  echo "ERROR: 未设置 CODEX_PLUGIN_ROOT 或缺少目录: ${CODEX_PLUGIN_ROOT}/scripts" >&2
   exit 1
 fi
-export SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
+export SCRIPTS_DIR="${CODEX_PLUGIN_ROOT}/scripts"
 ```
 
 必须做：
 - 确认当前目录可写。
 - 解析脚本目录并确认入口存在（仅支持插件目录）：
-  - 固定路径：`${CLAUDE_PLUGIN_ROOT}/scripts`
+  - 固定路径：`${CODEX_PLUGIN_ROOT}/scripts`
   - 入口脚本：`${SCRIPTS_DIR}/webnovel.py`
 - 建议先打印解析结果，避免写到错误目录：
   - `python "${SCRIPTS_DIR}/webnovel.py" --project-root "${WORKSPACE_ROOT}" where`
@@ -325,7 +325,7 @@ export SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 
 - `project_root` 必须由书名安全化生成（去非法字符，空格转 `-`）。
 - 若安全化结果为空或以 `.` 开头，自动前缀 `proj-`。
-- 禁止在插件目录下生成项目文件（`${CLAUDE_PLUGIN_ROOT}`）。
+- 禁止在插件目录下生成项目文件（`${CODEX_PLUGIN_ROOT}`）。
 
 ## 执行生成
 
