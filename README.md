@@ -131,6 +131,21 @@ python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<PROJECT_ROOT
 
 说明：迁移命令会读取历史指针并收敛到 `.codex`，日常运行只使用 `.codex`。
 
+## 常见问题 (FAQ)
+
+### 1. Git Push 时提示 `Connection closed by 198.18.0.x port 22`
+这是由于本地代理（如 Clash/V2Ray 的 Fake-IP 模式）拦截了 SSH 默认的 22 端口导致的。
+**解决方法**：修改本地的 `~/.ssh/config`，强制通过 443 端口连接 GitHub：
+```ssh
+Host github.com
+  HostName ssh.github.com
+  Port 443
+  User git
+  # 请确保 IdentityFile 的路径正确指向你的私钥
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+```
+
 ## 开源协议
 
 本项目使用 `GPL v3` 协议，详见 `LICENSE`。

@@ -65,20 +65,31 @@ examples/webnovel-project-codex-fix/
 /.codex-plugin/
 /.tmp-test/
 /.npm-cache/
-/tmp/
-tmp-*/
+tmp/
+tmp*/
 /tmpa*/
 /tmp-write-check-*/
 /pytest-cache-files-*/
-/pytesttmp*/
+pytesttmp*/
 /_ptmp_root*/
 /_tmp_pytest/
 /pytest_collected/
 /.tmp-rules-test.rules
 /.venv-run/
 /.venv2/
-/.pytest-local*/
-/__temp__/expired-root/
+
+# Ignore pytest and temporary test artifacts globally
+.pytest-local*/
+__temp__/
+inline-snapshot-*/
+pytest-of-*/
+pytesttmp*/
+tmp_pytest*/
+.audit-tmp/
+.codex-tmp/
+.tmp-test/
+pytest-cache-files-*/
+pytest-base/
 
 # Probes / debug artifacts (created during runs)
 /probe-dir-*/
