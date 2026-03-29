@@ -61,7 +61,8 @@ function Resolve-CodexExecutable {
             if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
             continue
         }
-        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue | Select-Object -First 1
+        # Limit to Application only to avoid alias/function lookup which can be slow
+        $cmd = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($null -eq $cmd) { continue }
         if (-not [string]::IsNullOrWhiteSpace($cmd.Path)) { return $cmd.Path }
         if (-not [string]::IsNullOrWhiteSpace($cmd.Definition)) { return $cmd.Definition }
@@ -239,10 +240,14 @@ function Start-StageProcess {
         "-CodexSandbox", $CodexSandbox,
         "-PromptPath", $PromptPath,
         "-OutputLastMessagePath", $LastMessagePath,
-        "-TranscriptPath", $TranscriptPath,
-        "-ApiBaseUrl", $ApiBaseUrl,
-        "-ApiKey", $ApiKey
+        "-TranscriptPath", $TranscriptPath
     )
+    if (-not [string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
+        $argList += @("-ApiBaseUrl", $ApiBaseUrl)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
+        $argList += @("-ApiKey", $ApiKey)
+    }
     if (-not [string]::IsNullOrWhiteSpace($Model)) {
         $argList += @("-Model", $Model)
     }
@@ -251,7 +256,10 @@ function Start-StageProcess {
     } elseif (-not [string]::IsNullOrWhiteSpace($CodexHome)) {
         $argList += @("-CodexHome", $CodexHome)
     }
-    return Start-Process -FilePath "powershell" -ArgumentList $argList -PassThru -WindowStyle Hidden
+    $ps5 = [System.IO.Path]::Combine($env:SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    if (-not (Test-Path $ps5)) { $ps5 = 'powershell' }
+    # No redirection — let stdout/stderr flow directly to the parent terminal.
+    return Start-Process -FilePath $ps5 -ArgumentList $argList -PassThru -NoNewWindow
 }
 
 function New-TaskWorktree {
@@ -314,15 +322,12 @@ $codingTemplatePath = Join-Path $RepoRoot "running/prompts/sisyphus_coding_worke
 $evaluatorTemplatePath = Join-Path $RepoRoot "running/prompts/sisyphus_evaluator_worker_prompt.md"
 $sessionRoot = Get-AbsPath -PathValue $SessionArtifactsDir -BaseDir $RepoRoot
 $worktreeRootAbs = Get-AbsPath -PathValue $WorktreeRoot -BaseDir $RepoRoot
-$CodexBin = Resolve-CodexExecutable -Requested $CodexBin
 
-if (-not (Test-Path $sessionRoot)) { New-Item -ItemType Directory -Path $sessionRoot -Force | Out-Null }
 if (-not (Test-Path $stageScriptPath)) { throw "Missing stage script: $stageScriptPath" }
 if (-not (Test-Path $codingTemplatePath)) { throw "Missing coding template: $codingTemplatePath" }
 if (-not (Test-Path $evaluatorTemplatePath)) { throw "Missing evaluator template: $evaluatorTemplatePath" }
 
 Write-Step ("Sisyphus dispatcher start max_dispatches={0} max_parallel={1}" -f $MaxDispatches, $MaxParallel)
-Write-Step ("Codex executable: {0}" -f $CodexBin)
 Write-Step ("Worktree root: {0}" -f $worktreeRootAbs)
 
 if ($DryRun) {
@@ -336,6 +341,11 @@ if ($DryRun) {
     }
     exit 0
 }
+
+# Resolve codex executable only for real runs (not dry-run)
+$CodexBin = Resolve-CodexExecutable -Requested $CodexBin
+Write-Step ("Codex executable: {0}" -f $CodexBin)
+if (-not (Test-Path $sessionRoot)) { New-Item -ItemType Directory -Path $sessionRoot -Force | Out-Null }
 
 $active = New-Object System.Collections.Generic.List[object]
 $dispatched = 0

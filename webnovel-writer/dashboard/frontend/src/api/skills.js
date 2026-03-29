@@ -163,40 +163,5 @@ export async function listSkills(options = {}) {
     }
 }
 
-export async function createSkill(input) {
-    const workspace = normalizeWorkspaceContext(input)
-    return requestJSON(API_ROOT, {
-        method: 'POST',
-        body: {
-            workspace,
-            id: input.id,
-            name: input.name,
-            description: input.description || '',
-            enabled: Boolean(input.enabled),
-        },
-    })
-}
-
-export async function toggleSkill(input) {
-    const workspace = normalizeWorkspaceContext(input)
-    const path = `${API_ROOT}/${encodeURIComponent(input.skillId)}/${input.enabled ? 'enable' : 'disable'}`
-    return requestJSON(path, {
-        method: 'POST',
-        body: {
-            workspace,
-            reason: input.reason || null,
-        },
-    })
-}
-
-export async function deleteSkill(input) {
-    const workspace = normalizeWorkspaceContext(input)
-    const path = `${API_ROOT}/${encodeURIComponent(input.skillId)}`
-    return requestJSON(path, {
-        method: 'DELETE',
-        body: {
-            workspace,
-            hard_delete: input.hardDelete ?? true,
-        },
-    })
-}
+// M1 阶段：删除写操作函数 createSkill、toggleSkill、deleteSkill
+// 这些操作已移至 CLI 命令 `webnovel codex session start --profile <profile>`

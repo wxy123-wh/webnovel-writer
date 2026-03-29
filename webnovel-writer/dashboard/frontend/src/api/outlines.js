@@ -149,47 +149,8 @@ export async function fetchOutlineBundle(options = {}) {
     }
 }
 
-export async function previewOutlineSplit(options = {}) {
-    const workspace = await createOutlineWorkspaceForRequest(options)
-    const payload = {
-        workspace,
-        selection_start: Math.max(0, options.selectionStart ?? 0),
-        selection_end: Math.max(0, options.selectionEnd ?? 0),
-        selection_text: options.selectionText || '',
-    }
-    const result = await requestJSON('/api/outlines/split/preview', {
-        method: 'POST',
-        body: payload,
-        signal: options.signal,
-    })
-    return {
-        status: result?.status || 'ok',
-        segments: Array.isArray(result?.segments) ? result.segments : [],
-        anchors: Array.isArray(result?.anchors) ? result.anchors : [],
-        isMock: false,
-    }
-}
-
-export async function applyOutlineSplit(options = {}) {
-    const workspace = await createOutlineWorkspaceForRequest(options)
-    const payload = {
-        workspace,
-        selection_start: Math.max(0, options.selectionStart ?? 0),
-        selection_end: Math.max(0, options.selectionEnd ?? 0),
-        idempotency_key: options.idempotencyKey || '',
-    }
-    const result = await requestJSON('/api/outlines/split/apply', {
-        method: 'POST',
-        body: payload,
-        signal: options.signal,
-    })
-    return {
-        status: result?.status || 'ok',
-        record: result?.record || null,
-        idempotency: result?.idempotency || null,
-        isMock: false,
-    }
-}
+// M1 阶段：删除写操作函数 previewOutlineSplit 和 applyOutlineSplit
+// 这些操作已移至 CLI 命令 `webnovel codex`
 
 export async function fetchOutlineSplitHistory(options = {}) {
     const workspace = await createOutlineWorkspaceForRequest(options)

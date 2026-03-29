@@ -23,6 +23,9 @@ python -m dashboard.server --project-root D:\path\to\novel-project
 # 生产部署（指定 CORS 来源）
 python -m dashboard.server --project-root /path/to/project --cors-origin "https://yourdomain.com"
 
+# 非本地部署（启用 Basic Auth）
+python -m dashboard.server --project-root /path/to/project --basic-auth writer:change-me --cors-origin "https://yourdomain.com"
+
 # 不自动打开浏览器
 python -m dashboard.server --no-browser
 ```
@@ -42,6 +45,7 @@ npm run build          # ✅ 唯一前端构建入口（vite build）
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
 | `WEBNOVEL_PROJECT_ROOT` | 项目根目录路径 | 无 |
+| `WEBNOVEL_DASHBOARD_BASIC_AUTH` | 可选 Basic Auth 凭据，格式 `user:password` | 无 |
 
 ---
 
@@ -61,9 +65,6 @@ npm run build          # ✅ 唯一前端构建入口（vite build）
 | `/api/files/tree` | GET | 文件树（正文/大纲/设定集） |
 | `/api/files/read` | GET | 读取文件内容（只读） |
 | `/api/events` | GET | SSE 实时推送 |
-| `/api/skills` | GET/POST/PATCH/DELETE | 技能管理 |
-| `/api/settings/files/tree` | GET | 设定集文件树 |
-| `/api/settings/dictionary` | GET/POST | 词典管理 |
 | `/api/outlines` | GET | 大纲数据 |
 | `/api/runtime/profile` | GET | Runtime 状态 |
 
@@ -113,9 +114,10 @@ npm run build          # ✅ 唯一前端构建入口（vite build）
 - `dashboard/app.py`：SSE 端点 `/api/events` 检查连接数，超限返回 503
 
 **P1-E：补充关键路径测试**
-- 新建 `dashboard/tests/test_phase2_coverage.py`（**8 个测试，全部通过**）
+- 新建 `dashboard/tests/test_phase2_coverage.py`（关键路径与认证闸门测试）
   - `/health` 端点（含无项目根目录场景）
   - CORS 来源允许/拒绝
+  - Basic Auth 未授权 / 已授权 / `/health` 免认证
   - `_walk_tree()` 递归截断
   - SSE 连接数限制和 `subscriber_count`
 

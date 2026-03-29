@@ -1,5 +1,7 @@
 """
-Runtime router skeleton.
+Runtime router - M1 阶段：仅保留只读查询接口。
+
+写接口（迁移相关）已全部删除，由 CLI 统一入口 `webnovel codex` 承载。
 """
 
 from fastapi import APIRouter, Depends
@@ -7,47 +9,28 @@ from fastapi.responses import JSONResponse
 
 from ..models.common import ApiErrorResponse
 from ..models.runtime import (
-    RuntimeMigrateRequest,
-    RuntimeMigrateResponse,
     RuntimeProfileQuery,
     RuntimeProfileResponse,
 )
 from ..services.runtime import RuntimeServiceError, get_runtime_profile as get_runtime_profile_service
-from ..services.runtime import migrate_runtime as migrate_runtime_service
 
-WRITE_ERROR_RESPONSES = {
-    400: {"model": ApiErrorResponse, "description": "Bad request placeholder response."},
-    403: {"model": ApiErrorResponse, "description": "Workspace access denied placeholder response."},
-    404: {"model": ApiErrorResponse, "description": "Resource not found placeholder response."},
-    409: {"model": ApiErrorResponse, "description": "Conflict placeholder response."},
-    501: {"model": ApiErrorResponse, "description": "Runtime capability not implemented."},
-    500: {"model": ApiErrorResponse, "description": "Internal error placeholder response."},
+READ_ERROR_RESPONSES = {
+    404: {"model": ApiErrorResponse, "description": "Resource not found."},
+    500: {"model": ApiErrorResponse, "description": "Internal server error."},
 }
 
 router = APIRouter(prefix="/api/runtime", tags=["runtime"])
 
 
-@router.get("/profile", response_model=RuntimeProfileResponse, responses=WRITE_ERROR_RESPONSES)
+@router.get("/profile", response_model=RuntimeProfileResponse, responses=READ_ERROR_RESPONSES)
 def get_runtime_profile(query: RuntimeProfileQuery = Depends()):
+    """获取运行时配置信息（只读）。"""
     try:
         profile = get_runtime_profile_service(
             workspace_id=query.workspace_id,
             project_root=query.project_root,
         )
         return RuntimeProfileResponse.model_validate(profile)
-    except RuntimeServiceError as exc:
-        return _error_response(exc)
-
-
-@router.post("/migrate", response_model=RuntimeMigrateResponse, responses=WRITE_ERROR_RESPONSES)
-def migrate_runtime(request: RuntimeMigrateRequest):
-    try:
-        report = migrate_runtime_service(
-            workspace_id=request.workspace.workspace_id,
-            project_root=request.workspace.project_root,
-            dry_run=request.dry_run,
-        )
-        return RuntimeMigrateResponse.model_validate(report)
     except RuntimeServiceError as exc:
         return _error_response(exc)
 

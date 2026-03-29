@@ -5,8 +5,6 @@
 #   docker compose logs -f
 #   docker compose down
 
-version: "3.9"
-
 services:
   dashboard:
     build:
@@ -26,6 +24,7 @@ services:
     environment:
       # 可覆盖的环境变量
       - WEBNOVEL_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - WEBNOVEL_DASHBOARD_BASIC_AUTH=${WEBNOVEL_DASHBOARD_BASIC_AUTH:-}
 
     # 覆盖默认 CMD，添加 CORS 和 JSON 日志参数
     command:

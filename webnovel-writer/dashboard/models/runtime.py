@@ -1,8 +1,10 @@
 """
-Runtime API models.
+Runtime API models - M1 阶段：仅保留只读查询模型。
+
+写接口（迁移相关）已全部删除。
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from .common import WorkspaceContext
 
@@ -10,39 +12,6 @@ from .common import WorkspaceContext
 class RuntimeProfileQuery(BaseModel):
     workspace_id: str = Field(default="workspace-default")
     project_root: str = Field(default="")
-
-
-class RuntimeMigrateMovedItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    kind: str
-    from_path: str = Field(alias="from")
-    to: str
-    dry_run: bool
-
-
-class RuntimeMigrateRemovedItem(BaseModel):
-    kind: str
-    path: str
-    reason: str
-    dry_run: bool
-
-
-class RuntimeMigrateSkippedItem(BaseModel):
-    kind: str
-    path: str
-    reason: str
-
-
-class RuntimeMigrationPreview(BaseModel):
-    moved: list[RuntimeMigrateMovedItem] = Field(default_factory=list)
-    removed: list[RuntimeMigrateRemovedItem] = Field(default_factory=list)
-    skipped: list[RuntimeMigrateSkippedItem] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    created_at: str
-    dry_run: bool = Field(default=True)
-    project_root: str
-    migratable_items: int = Field(default=0, ge=0)
 
 
 class RuntimePointerFileState(BaseModel):
@@ -77,20 +46,3 @@ class RuntimeProfileResponse(BaseModel):
     workspace: WorkspaceContext
     pointer: RuntimePointerState
     legacy: RuntimeLegacyState
-    migration_preview: RuntimeMigrationPreview
-
-
-class RuntimeMigrateRequest(BaseModel):
-    workspace: WorkspaceContext = Field(default_factory=WorkspaceContext)
-    dry_run: bool = Field(default=True)
-
-
-class RuntimeMigrateResponse(BaseModel):
-    moved: list[RuntimeMigrateMovedItem] = Field(default_factory=list)
-    removed: list[RuntimeMigrateRemovedItem] = Field(default_factory=list)
-    skipped: list[RuntimeMigrateSkippedItem] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    created_at: str
-    dry_run: bool
-    project_root: str
-    report_path: str

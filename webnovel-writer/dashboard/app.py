@@ -1,11 +1,14 @@
 """
 Webnovel Dashboard - FastAPI 主应用
 
-提供现有只读接口 + OpenSpec 冻结写接口骨架；所有文件读取经过 path_guard 防穿越校验。
+提供当前主线的只读接口；所有文件读取经过 path_guard 防穿越校验。
 """
 
 import asyncio
+import binascii
+import base64
 import json
+import secrets
 import sqlite3
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
@@ -18,15 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models.common import ApiErrorResponse
 from .path_guard import safe_resolve
-from .routers import (
-    codex_bridge_router,
-    edit_assist_router,
-    outlines_router,
-    runtime_router,
-    settings_dictionary_router,
-    settings_files_router,
-    skills_router,
-)
+from .routers import runtime_router
 from .watcher import FileWatcher
 
 # ---------------------------------------------------------------------------
@@ -131,6 +126,36 @@ def _raise_api_error(
     )
 
 
+def _unauthorized_response(request: Request) -> JSONResponse:
+    payload = _api_error_payload(
+        error_code="unauthorized",
+        message="需要有效的 Basic Auth 凭据",
+        details=None,
+        request_id=request.headers.get("x-request-id"),
+    )
+    return JSONResponse(
+        status_code=401,
+        content=payload,
+        headers={"WWW-Authenticate": 'Basic realm="Webnovel Dashboard"'},
+    )
+
+
+def _parse_basic_auth_header(header_value: str | None) -> tuple[str, str] | None:
+    if not header_value:
+        return None
+    scheme, _, token = header_value.partition(" ")
+    if scheme.lower() != "basic" or not token:
+        return None
+    try:
+        decoded = base64.b64decode(token).decode("utf-8")
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return None
+    username, sep, password = decoded.partition(":")
+    if not sep:
+        return None
+    return username, password
+
+
 def _is_missing_table_error(exc: sqlite3.OperationalError) -> bool:
     return "no such table" in str(exc).lower()
 
@@ -184,6 +209,7 @@ def _resolve_project_root_from_pointer() -> Path | None:
 def create_app(
     project_root: str | Path | None = None,
     allowed_origins: list[str] | None = None,
+    basic_auth_credentials: tuple[str, str] | None = None,
 ) -> FastAPI:
     """创建 FastAPI 应用。
 
@@ -220,6 +246,7 @@ def create_app(
     app = FastAPI(title="Webnovel Dashboard", version="0.1.0", lifespan=_lifespan)
     # P0-B 修复：project_root 存入 app.state，线程安全且多 worker 友好
     app.state.project_root = _initial_root
+    app.state.basic_auth_credentials = basic_auth_credentials
 
     # P0-A 修复：使用参数控制的 CORS 来源，避免全开放
     app.add_middleware(
@@ -228,6 +255,26 @@ def create_app(
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def _basic_auth_guard(request: Request, call_next):
+        credentials = getattr(app.state, "basic_auth_credentials", None)
+        if not credentials or request.url.path == "/health":
+            return await call_next(request)
+
+        provided = _parse_basic_auth_header(request.headers.get("authorization"))
+        if provided is None:
+            return _unauthorized_response(request)
+
+        expected_user, expected_password = credentials
+        provided_user, provided_password = provided
+        if not (
+            secrets.compare_digest(provided_user, expected_user)
+            and secrets.compare_digest(provided_password, expected_password)
+        ):
+            return _unauthorized_response(request)
+
+        return await call_next(request)
 
     @app.exception_handler(HTTPException)
     async def _api_http_exception_handler(request: Request, exc: HTTPException):
@@ -271,14 +318,9 @@ def create_app(
 
         return JSONResponse(status_code=500, content=payload)
 
-    # OpenSpec 冻结新增能力路由骨架（T02）
+    # M1 阶段：仅保留只读路由
+    # 写接口已全部删除，由 CLI 统一入口 `webnovel codex` 承载
     app.include_router(runtime_router)
-    app.include_router(skills_router)
-    app.include_router(settings_files_router)
-    app.include_router(settings_dictionary_router)
-    app.include_router(outlines_router)
-    app.include_router(edit_assist_router)
-    app.include_router(codex_bridge_router)
 
     # ===========================================================
     # API：项目元信息

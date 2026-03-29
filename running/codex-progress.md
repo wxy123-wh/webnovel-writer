@@ -80,3 +80,37 @@ powershell -ExecutionPolicy Bypass -File running/sisyphus-dispatcher.ps1 `
 powershell -ExecutionPolicy Bypass -File running/start-harness.ps1 -DryRun -ApiKey dummy
 ```
 | 2026-03-28 | Sisyphus dispatcher run | T015 | pending | N/A | stage=evaluator; run=20260328-052204-02-T015 | codex/sisyphus/t015-20260328-052204-02-T015 | FAIL | N/A | gaps: Attempted to run `python -X utf8 webnovel-writer/scripts/webnovel.py codex rag verify --project-root . --report json`, but command execution failed before the script started with `windows sandbox: CreateProcessWithLogonW failed: 2`.; Could not verify that the JSON report includes all required metrics, that threshold violations return a non-zero exit code, or that the pass summary is machine-readable because no verification command produced output. |
+| 2026-03-28 | Sisyphus dispatcher run | T010 | blocked | N/A | stage=coding; run=20260328-051625-01-T010 | codex/sisyphus/t010-20260328-051625-01-T010 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T002 | blocked | N/A | stage=coding; run=20260328-062139-02-T002 | codex/sisyphus/t002-20260328-062139-02-T002 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T003 | blocked | N/A | stage=coding; run=20260328-081905-01-T003 | codex/sisyphus/t003-20260328-081905-01-T003 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T016 | blocked | N/A | stage=coding; run=20260328-052705-01-T016 | codex/sisyphus/t016-20260328-052705-01-T016 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T004 | blocked | N/A | stage=coding; run=20260328-050954-01-T004 | codex/sisyphus/t004-20260328-050954-01-T004 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T005 | blocked | N/A | stage=coding; run=20260328-050955-02-T005 | codex/sisyphus/t005-20260328-050955-02-T005 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T003 | blocked | N/A | stage=coding; run=20260328-055118-01-T003 | codex/sisyphus/t003-20260328-055118-01-T003 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T004 | blocked | N/A | stage=coding; run=20260328-055119-02-T004 | codex/sisyphus/t004-20260328-055119-02-T004 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T001 | blocked | N/A | stage=coding; run=20260328-054318-01-T001 | codex/sisyphus/t001-20260328-054318-01-T001 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T006 | blocked | N/A | stage=coding; run=20260328-051153-01-T006 | codex/sisyphus/t006-20260328-051153-01-T006 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T008 | blocked | N/A | stage=coding; run=20260328-051414-01-T008 | codex/sisyphus/t008-20260328-051414-01-T008 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T002 | blocked | N/A | stage=coding; run=20260328-053437-02-T002 | codex/sisyphus/t002-20260328-053437-02-T002 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T001 | blocked | N/A | stage=coding; run=20260328-053101-01-T001 | codex/sisyphus/t001-20260328-053101-01-T001 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T007 | blocked | N/A | stage=coding; run=20260328-051154-02-T007 | codex/sisyphus/t007-20260328-051154-02-T007 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T009 | blocked | N/A | stage=coding; run=20260328-051415-02-T009 | codex/sisyphus/t009-20260328-051415-02-T009 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T002 | blocked | N/A | stage=coding; run=20260328-053102-02-T002 | codex/sisyphus/t002-20260328-053102-02-T002 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T011 | blocked | N/A | stage=coding; run=20260328-051625-02-T011 | codex/sisyphus/t011-20260328-051625-02-T011 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T012 | blocked | N/A | stage=coding; run=20260328-051855-01-T012 | codex/sisyphus/t012-20260328-051855-01-T012 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T013 | blocked | N/A | stage=coding; run=20260328-051856-02-T013 | codex/sisyphus/t013-20260328-051856-02-T013 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T001 | blocked | N/A | stage=coding; run=20260328-062137-01-T001 | codex/sisyphus/t001-20260328-062137-01-T001 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T001 | blocked | N/A | stage=coding; run=20260328-053748-01-T001 | codex/sisyphus/t001-20260328-053748-01-T001 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T002 | blocked | N/A | stage=coding; run=20260328-053749-02-T002 | codex/sisyphus/t002-20260328-053749-02-T002 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T014 | blocked | N/A | stage=coding; run=20260328-052203-01-T014 | codex/sisyphus/t014-20260328-052203-01-T014 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T003 | blocked | N/A | stage=coding; run=20260328-053831-03-T003 | codex/sisyphus/t003-20260328-053831-03-T003 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T001 | blocked | N/A | stage=coding; run=20260328-053436-01-T001 | codex/sisyphus/t001-20260328-053436-01-T001 | FAIL | N/A | Coding worker exit code -1 |
+| 2026-03-28 | Sisyphus dispatcher run | T007 | blocked | N/A | stage=coding; run=20260328-110657-01-T007 | codex/sisyphus/t007-20260328-110657-01-T007 | FAIL | N/A | Coding worker exit code 2 |
+| 2026-03-28 | Sisyphus dispatcher run | T008 | blocked | N/A | stage=coding; run=20260328-110658-02-T008 | codex/sisyphus/t008-20260328-110658-02-T008 | FAIL | N/A | Coding worker exit code 2 |
+| 2026-03-28 | Sisyphus dispatcher run | T009 | blocked | N/A | stage=coding; run=20260328-221615-01-T009 | codex/sisyphus/t009-20260328-221615-01-T009 | FAIL | N/A | Coding worker exit code 2 |
+| 2026-03-28 | Sisyphus dispatcher run | T009 | blocked | N/A | stage=coding; run=20260328-222442-01-T009 | codex/sisyphus/t009-20260328-222442-01-T009 | FAIL | N/A | Coding worker exit code 2 |
+| 2026-03-28 | Sisyphus dispatcher run | T009 | blocked | N/A | stage=coding; run=20260328-223238-01-T009 | codex/sisyphus/t009-20260328-223238-01-T009 | FAIL | N/A | Coding worker exit code 2 |
+| 2026-03-28 | Sisyphus dispatcher run | T009 | blocked | N/A | stage=coding; run=20260328-223459-01-T009 | codex/sisyphus/t009-20260328-223459-01-T009 | FAIL | N/A | Coding worker exit code 2 |
+| 2026-03-28 | Sisyphus dispatcher run | T001 | blocked | N/A | stage=coding; run=20260328-225024-01-T001 | codex/sisyphus/t001-20260328-225024-01-T001 | FAIL | N/A | Coding worker exit code  |
+| 2026-03-28 | Sisyphus dispatcher run | T001 | blocked | N/A | stage=coding; run=20260328-225151-01-T001 | codex/sisyphus/t001-20260328-225151-01-T001 | FAIL | N/A | Coding worker exit code  |
+| 2026-03-28 | Sisyphus dispatcher run | T002 | blocked | N/A | stage=coding; run=20260328-225441-01-T002 | codex/sisyphus/t002-20260328-225441-01-T002 | FAIL | N/A | Coding worker exit code  |

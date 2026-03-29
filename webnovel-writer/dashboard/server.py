@@ -83,6 +83,17 @@ def _bootstrap_index_if_needed(project_root: Path) -> None:
     print(f"WARNING: 自动初始化 index.db 失败：{detail}", file=sys.stderr)
 
 
+def _resolve_basic_auth(raw_value: str | None) -> tuple[str, str] | None:
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+    username, sep, password = value.partition(":")
+    if not sep or not username or not password:
+        print("ERROR: --basic-auth / WEBNOVEL_DASHBOARD_BASIC_AUTH 必须是 user:password 格式", file=sys.stderr)
+        sys.exit(2)
+    return username, password
+
+
 def main():
     parser = argparse.ArgumentParser(description="Webnovel Dashboard Server")
     parser.add_argument("--project-root", type=str, default=None, help="小说项目根目录")
@@ -114,6 +125,11 @@ def main():
         action="store_true",
         help="输出 JSON 格式日志（生产环境推荐）",
     )
+    parser.add_argument(
+        "--basic-auth",
+        default=None,
+        help="可选的 Basic Auth 凭据，格式 user:password；生产环境更推荐用 WEBNOVEL_DASHBOARD_BASIC_AUTH 环境变量",
+    )
     args = parser.parse_args()
 
     # P2-C 修复：尽早初始化结构化日志
@@ -139,7 +155,9 @@ def main():
             f"http://127.0.0.1:{args.port}",
         ]
 
-    app = create_app(project_root, allowed_origins=allowed_origins)
+    basic_auth = _resolve_basic_auth(args.basic_auth or os.environ.get("WEBNOVEL_DASHBOARD_BASIC_AUTH"))
+
+    app = create_app(project_root, allowed_origins=allowed_origins, basic_auth_credentials=basic_auth)
 
     url = f"http://{args.host}:{args.port}"
     logger.info("Dashboard 已启动", extra={"url": url, "cors": allowed_origins})

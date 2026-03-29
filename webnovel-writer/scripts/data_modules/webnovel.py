@@ -62,6 +62,7 @@ CONSISTENCY_META_KEYS = {
     "sync_version",
 }
 PASSTHROUGH_TOOLS = {
+    "codex",
     "index",
     "state",
     "rag",
@@ -836,6 +837,19 @@ def _run_data_module(module: str, argv: list[str]) -> int:
         sys.argv = old_argv
 
 
+def _inject_codex_project_root_args(rest: list[str], project_root: Path) -> list[str]:
+    if not rest:
+        return rest
+
+    if "--project-root" in rest:
+        return rest
+
+    command_head = tuple(rest[:2])
+    if command_head in {("session", "start"), ("index", "status"), ("rag", "verify")}:
+        return [*rest, "--project-root", str(project_root)]
+    return rest
+
+
 def _run_script(script_name: str, argv: list[str]) -> int:
     """
     Run a script under `scripts/` via a subprocess.
@@ -1111,6 +1125,9 @@ def main() -> None:
     )
     p_dashboard.set_defaults(func=cmd_dashboard)
 
+    p_codex = sub.add_parser("codex", help="转发到 codex_cli（会话 / 索引 / RAG）")
+    p_codex.add_argument("args", nargs=argparse.REMAINDER)
+
     p_consistency = sub.add_parser("consistency-check", help="检查 state/index/rag 一致性并给出诊断建议")
     p_consistency.add_argument("--format", choices=["text", "json"], default="text", help="输出格式")
     p_consistency.set_defaults(func=cmd_consistency_check)
@@ -1218,6 +1235,8 @@ def main() -> None:
 
     if tool == "index":
         raise SystemExit(_run_data_module("index_manager", [*forward_args, *rest]))
+    if tool == "codex":
+        raise SystemExit(_run_data_module("codex_cli", _inject_codex_project_root_args(rest, project_root)))
     if tool == "state":
         raise SystemExit(_run_data_module("state_manager", [*forward_args, *rest]))
     if tool == "rag":

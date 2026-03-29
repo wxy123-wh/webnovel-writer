@@ -132,6 +132,7 @@ Execution model:
 1. Dispatcher claims task in root queue state (`feature_list.json`).
 2. Dispatcher creates a new `git worktree` + branch for that task.
 3. Dispatcher launches coding worker (`run-codex-stage.ps1` + coding prompt template).
+   - `run-codex-stage.ps1` uses two background .NET threads to stream stdout/stderr in real time to the transcript file — output appears immediately, not after process exit.
 4. After coding exits, dispatcher launches a new evaluator worker for the same task/worktree.
 5. Dispatcher reads evaluator JSON verdict and updates queue state:
 - `PASS` => `status=done`, `passes=true`
@@ -141,6 +142,46 @@ Notes:
 1. This preserves the existing pipeline semantics (`派任务 -> 写代码 -> 测试`), but decouples roles by process.
 2. Dispatcher never performs implementation or acceptance itself.
 3. Keep/cleanup worktrees can be controlled by `-KeepWorktrees`.
+
+### Monitoring — Native Windows Terminal Pane Split
+
+The recommended way to watch agents is via **native wt pane splitting**, not a Python renderer:
+
+```
+┌─────────────────────────────┬──────────────────┐
+│  Dispatcher                 │  Task Status     │
+│  (front-end, Tee to log)    ├──────────────────┤
+│                             │  Agent Monitor   │
+│                             │  (auto-splits    │
+│                             │   new panes)     │
+└─────────────────────────────┴──────────────────┘
+                                      │
+                         New Agent session detected:
+                         ┌────────────────────────┐
+                         │  CODE T003             │
+                         │  Get-Content -Wait     │
+                         │  (raw codex output)    │
+                         └────────────────────────┘
+```
+
+- **`open-dashboard.ps1`** — one command launches the full layout above.
+- **`open-agent-panes.ps1`** — polls `sessions/` every 2 s; calls `wt split-pane` for each new agent, showing raw `Get-Content -Tail -Wait` output in its own terminal pane.
+- Each pane title = `CODE T003` or `EVAL T003` so stage and task are visible at a glance.
+
+```powershell
+# Recommended: one-command full dashboard
+powershell -ExecutionPolicy Bypass -File running/open-dashboard.ps1 -ApiKey "sk-xxx"
+
+# Already have a wt window? Just start the agent pane monitor inside it:
+powershell -ExecutionPolicy Bypass -File running/open-agent-panes.ps1
+```
+
+Alternative (Python rich TUI, no wt required):
+
+```powershell
+# Renders dispatcher + up to 3 agent logs in one terminal with color-coded lines
+python running/watch-logs.py
+```
 
 ## 8. Human Assistance Branch (Blocking Path)
 
@@ -200,4 +241,16 @@ powershell -ExecutionPolicy Bypass -File running/sisyphus-dispatcher.ps1 -DryRun
 
 # CLI preflight
 python -X utf8 webnovel-writer/scripts/webnovel.py --project-root <PROJECT_ROOT> preflight --format json
+
+# ★ 推荐：一键启动全套原生分屏监控（Dispatcher 前台可见 + 每个 Agent 独立窗格）
+powershell -ExecutionPolicy Bypass -File running/open-dashboard.ps1 -ApiKey "sk-xxx"
+
+# 已有 wt 窗口时，单独启动 Agent 窗格监听器
+powershell -ExecutionPolicy Bypass -File running/open-agent-panes.ps1
+
+# 备选：Python rich TUI（无需 wt，单窗口内渲染多 Agent 日志）
+python running/watch-logs.py
+
+# 任务状态单独查看
+python running/watch-status.py
 ```

@@ -634,3 +634,83 @@ def test_consistency_check_reports_drift_with_suggestions(monkeypatch, tmp_path,
     assert payload["status"] == "drift"
     assert "INDEX_SYNC_STALE" in issue_codes
     assert "INDEX_DATA_BEHIND" in issue_codes
+
+
+def test_codex_rag_verify_passthrough_injects_project_root(monkeypatch, tmp_path):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    project_root.mkdir(parents=True, exist_ok=True)
+    captured = {}
+
+    def _fake_resolve(explicit_project_root=None):
+        return project_root
+
+    def _fake_run_data_module(module_name, argv):
+        captured["module_name"] = module_name
+        captured["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(module, "_resolve_root", _fake_resolve)
+    monkeypatch.setattr(module, "_run_data_module", _fake_run_data_module)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "codex",
+            "rag",
+            "verify",
+            "--report",
+            "json",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    assert int(exc.value.code or 0) == 0
+    assert captured["module_name"] == "codex_cli"
+    assert captured["argv"] == ["rag", "verify", "--report", "json", "--project-root", str(project_root)]
+
+
+def test_codex_session_stop_passthrough_does_not_inject_project_root(monkeypatch, tmp_path):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    project_root.mkdir(parents=True, exist_ok=True)
+    captured = {}
+
+    def _fake_resolve(explicit_project_root=None):
+        return project_root
+
+    def _fake_run_data_module(module_name, argv):
+        captured["module_name"] = module_name
+        captured["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(module, "_resolve_root", _fake_resolve)
+    monkeypatch.setattr(module, "_run_data_module", _fake_run_data_module)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "codex",
+            "session",
+            "stop",
+            "--session-id",
+            "session-123",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    assert int(exc.value.code or 0) == 0
+    assert captured["module_name"] == "codex_cli"
+    assert captured["argv"] == ["session", "stop", "--session-id", "session-123"]
