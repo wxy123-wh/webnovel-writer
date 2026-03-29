@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 extract_chapter_context.py - extract chapter writing context
 
@@ -14,14 +13,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from chapter_outline_loader import load_chapter_outline
-
 from runtime_compat import enable_windows_utf8_stdio
 
 try:
@@ -142,7 +141,7 @@ def _extract_location(location: Any) -> str:
     if not isinstance(location, dict):
         return "?"
 
-    queue: List[Dict[str, Any]] = [location]
+    queue: list[dict[str, Any]] = [location]
     visited: set[int] = set()
     while queue:
         node = queue.pop(0)
@@ -165,7 +164,7 @@ def _extract_location(location: Any) -> str:
     return "?"
 
 
-def _load_state_payload(project_root: Path) -> tuple[Dict[str, Any], str]:
+def _load_state_payload(project_root: Path) -> tuple[dict[str, Any], str]:
     state_file = project_root / ".webnovel" / "state.json"
     if not state_file.exists():
         return {}, f"⚠️ state.json 缺失: {state_file}"
@@ -181,7 +180,7 @@ def _load_state_payload(project_root: Path) -> tuple[Dict[str, Any], str]:
     return raw, ""
 
 
-def extract_state_snapshot(project_root: Path) -> Dict[str, Any]:
+def extract_state_snapshot(project_root: Path) -> dict[str, Any]:
     """抽取状态快照（供 text/json 共用）。"""
     state, warning = _load_state_payload(project_root)
 
@@ -205,7 +204,7 @@ def extract_state_snapshot(project_root: Path) -> Dict[str, Any]:
         if isinstance(raw_history, list):
             history_rows = raw_history[-5:]
 
-    history: List[Dict[str, Any]] = []
+    history: list[dict[str, Any]] = []
     for row in history_rows:
         if not isinstance(row, dict):
             continue
@@ -216,7 +215,7 @@ def extract_state_snapshot(project_root: Path) -> Dict[str, Any]:
             }
         )
 
-    urgent_foreshadowing: List[Dict[str, Any]] = []
+    urgent_foreshadowing: list[dict[str, Any]] = []
     plot_threads = state.get("plot_threads")
     if isinstance(plot_threads, dict):
         foreshadowing_rows = plot_threads.get("foreshadowing")
@@ -260,8 +259,8 @@ def extract_state_snapshot(project_root: Path) -> Dict[str, Any]:
     }
 
 
-def _render_state_snapshot(state_snapshot: Dict[str, Any]) -> str:
-    summary_parts: List[str] = []
+def _render_state_snapshot(state_snapshot: dict[str, Any]) -> str:
+    summary_parts: list[str] = []
     warning = _safe_text(state_snapshot.get("warning"), "").strip()
     if warning:
         summary_parts.append(warning)
@@ -287,17 +286,17 @@ def _render_state_snapshot(state_snapshot: Dict[str, Any]) -> str:
 
     history = state_snapshot.get("strand_history")
     if isinstance(history, list) and history:
-        items: List[str] = []
+        items: list[str] = []
         for row in history:
             if not isinstance(row, dict):
                 continue
-            items.append(f"Ch{row.get('chapter', '?')}:{_safe_text(row.get('strand'), 'unknown')}")
+            items.append(f"Ch{row.get('chapter', '?')}:{_safe_text(row.get('strand') or row.get('dominant'), 'unknown')}")
         if items:
             summary_parts.append(f"**近5章Strand**: {', '.join(items)}")
 
     urgent_foreshadowing = state_snapshot.get("urgent_foreshadowing")
     if isinstance(urgent_foreshadowing, list) and urgent_foreshadowing:
-        urgent_items: List[str] = []
+        urgent_items: list[str] = []
         for row in urgent_foreshadowing[:3]:
             if not isinstance(row, dict):
                 continue
@@ -350,7 +349,7 @@ def _search_with_rag(
     chapter_num: int,
     query: str,
     top_k: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     _ensure_scripts_path()
     from data_modules.config import DataModulesConfig
     from data_modules.rag_adapter import RAGAdapter
@@ -384,7 +383,7 @@ def _search_with_rag(
         fallback_reason = "missing_embed_api_key"
         results = adapter.bm25_search(query=query, top_k=top_k, chapter=chapter_num)
 
-    hits: List[Dict[str, Any]] = []
+    hits: list[dict[str, Any]] = []
     for row in results:
         content = re.sub(r"\s+", " ", str(getattr(row, "content", "") or "")).strip()
         hits.append(
@@ -411,7 +410,7 @@ def _search_with_rag(
     }
 
 
-def _load_rag_assist(project_root: Path, chapter_num: int, outline: str) -> Dict[str, Any]:
+def _load_rag_assist(project_root: Path, chapter_num: int, outline: str) -> dict[str, Any]:
     _ensure_scripts_path()
     from data_modules.config import DataModulesConfig
 
@@ -445,7 +444,7 @@ def _load_rag_assist(project_root: Path, chapter_num: int, outline: str) -> Dict
         return base_payload
 
 
-def _load_contract_context(project_root: Path, chapter_num: int) -> Dict[str, Any]:
+def _load_contract_context(project_root: Path, chapter_num: int) -> dict[str, Any]:
     """Build context via ContextManager and return selected sections."""
     _ensure_scripts_path()
     from data_modules.config import DataModulesConfig
@@ -471,25 +470,21 @@ def _load_contract_context(project_root: Path, chapter_num: int) -> Dict[str, An
     }
 
 
-def _empty_rag_payload(reason: str) -> Dict[str, Any]:
+def _empty_rag_payload(reason: str) -> dict[str, Any]:
     return {"enabled": False, "invoked": False, "reason": reason, "query": "", "hits": []}
 
 
-def _ensure_target_chapter_exists(project_root: Path, chapter_num: int) -> None:
+def _ensure_target_chapter_exists(project_root: Path, chapter_num: int) -> bool:
+    """检查目标章节文件是否存在。
+
+    返回 True 表示文件存在，False 表示不存在（写作新章节时的正常状态）。
+    不再抛出异常，由调用方决定如何处理。
+    """
     chapter_file = find_chapter_file(project_root, chapter_num)
-    if chapter_file and chapter_file.exists():
-        return
-
-    chapters_dir = project_root / "正文"
-    raise FileNotFoundError(
-        "章节不存在: "
-        f"chapter={chapter_num}, "
-        f"chapters_dir={chapters_dir}, "
-        f"pattern=第{chapter_num:03d}章*.md|第{chapter_num:04d}章*.md"
-    )
+    return bool(chapter_file and chapter_file.exists())
 
 
-def build_chapter_context_payload(project_root: Path, chapter_num: int) -> Dict[str, Any]:
+def build_chapter_context_payload(project_root: Path, chapter_num: int) -> dict[str, Any]:
     """Assemble full chapter context payload for text/json output."""
     outline = extract_chapter_outline(project_root, chapter_num)
 
@@ -500,13 +495,13 @@ def build_chapter_context_payload(project_root: Path, chapter_num: int) -> Dict[
 
     state_snapshot = extract_state_snapshot(project_root)
     state_summary = _render_state_snapshot(state_snapshot)
-    warnings: List[str] = []
+    warnings: list[str] = []
     state_warning = _safe_text(state_snapshot.get("warning"), "").strip()
     if state_warning:
         warnings.append(state_warning)
 
-    contract_context: Dict[str, Any]
-    rag_assist: Dict[str, Any]
+    contract_context: dict[str, Any]
+    rag_assist: dict[str, Any]
     if state_warning:
         contract_context = {}
         rag_assist = _empty_rag_payload("state_missing")
@@ -539,9 +534,9 @@ def build_chapter_context_payload(project_root: Path, chapter_num: int) -> Dict[
     }
 
 
-def _render_text(payload: Dict[str, Any]) -> str:
+def _render_text(payload: dict[str, Any]) -> str:
     chapter_num = payload.get("chapter")
-    lines: List[str] = []
+    lines: list[str] = []
 
     lines.append(f"# 第 {chapter_num} 章创作上下文")
     lines.append("")
@@ -595,10 +590,8 @@ def _render_text(payload: Dict[str, Any]) -> str:
             required_count = 0
             for row in checklist:
                 if isinstance(row, dict):
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         total_weight += float(row.get("weight") or 0)
-                    except (TypeError, ValueError):
-                        pass
                     if row.get("required"):
                         required_count += 1
 
@@ -725,7 +718,15 @@ def main():
             if args.project_root
             else find_project_root()
         )
-        _ensure_target_chapter_exists(project_root, args.chapter)
+        # P0-1 修复：章节文件不存在时报错退出
+        chapter_exists = _ensure_target_chapter_exists(project_root, args.chapter)
+        if not chapter_exists:
+            chapters_dir = project_root / "正文"
+            print(
+                f"章节不存在 chapter={args.chapter} {chapters_dir}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         payload = build_chapter_context_payload(project_root, args.chapter)
 
         if args.format == "json":

@@ -1,0 +1,14 @@
+profile: consistency
+version: "1.0"
+description: "一致性检查辅助"
+rules_file: rules.md
+
+checkers:
+  pacing:
+    weight: 1.0
+  coolpoint:
+    weight: 0.8
+  consistency:
+    weight: 1.5
+  hook:
+    weight: 1.0

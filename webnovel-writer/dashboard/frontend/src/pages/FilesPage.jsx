@@ -16,6 +16,20 @@ const RETRY_BUTTON_STYLE = {
     padding: '6px 12px',
     cursor: 'pointer',
 }
+const PREVIEW_EDITOR_STYLE = {
+    width: '100%',
+    border: '2px solid var(--border-soft)',
+    background: '#fff',
+    padding: 12,
+    minHeight: 260,
+    overflow: 'auto',
+    lineHeight: 1.75,
+    wordBreak: 'break-word',
+    fontSize: 14,
+    fontFamily: 'var(--font-body)',
+    resize: 'vertical',
+    boxSizing: 'border-box',
+}
 
 function collectFirstFilePath(nodes) {
     const stack = Array.isArray(nodes) ? [...nodes] : []
@@ -188,8 +202,18 @@ export default function FilesPage() {
         <PageScaffold
             title="文档浏览"
             badge={loadingTree ? '加载中' : `${treeData.folders.length} 个目录`}
-            description="目录树来自 /api/files/tree，文件内容来自 /api/files/read。"
+            description="[只读展示模式] 浏览项目文件。编辑操作请通过 Codex 直接修改文件。"
         >
+            <div className="card" style={{ background: '#fff8e6', borderColor: '#d4a574' }}>
+                <div className="card-header">
+                    <span className="card-title">📋 只读展示模式</span>
+                    <span className="card-badge badge-amber">Read-Only</span>
+                </div>
+                <p style={{ margin: 0, color: '#5d5035' }}>
+                    此页面为只读展示。文件编辑请使用 Codex 直接修改文件或通过 CLI 命令执行。
+                </p>
+            </div>
+
             {loadingTree ? (
                 <div className="loading">文件树加载中...</div>
             ) : null}
@@ -271,7 +295,15 @@ export default function FilesPage() {
                         {!loadingFile && !fileError && selectedPath ? (
                             <div>
                                 <div className="selected-path">{selectedPath}</div>
-                                <div className="file-preview">{fileContent || '[文件为空]'}</div>
+                                <textarea
+                                    style={PREVIEW_EDITOR_STYLE}
+                                    value={fileContent || ''}
+                                    readOnly
+                                    placeholder="[文件为空]"
+                                />
+                                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-sub)' }}>
+                                    提示: 编辑文件请使用 Codex 直接修改文件。
+                                </div>
                             </div>
                         ) : null}
                     </div>

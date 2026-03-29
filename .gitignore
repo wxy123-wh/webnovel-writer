@@ -1,4 +1,4 @@
-.claude/settings.local.json
+.codex/settings.local.json
 
 # Python caches & virtualenv
 __pycache__/
@@ -43,9 +43,75 @@ PROJECT_MINDMAP*.md
 webnovel-writer-v5*-architecture.svg
 _v52_*.json
 _v52_*.txt
-claude_inventory.csv
+codex_inventory.csv
 *_utf8_sample.txt
 piptemp/
 _codex_push_tmp_*/
 webnovel-project/
 webnovel-project-codex-fix/
+examples/demo-novel/
+examples/webnovel-project/
+examples/webnovel-project-codex-fix/
+
+# ----------------------------
+# Tooling / local temp dirs
+# ----------------------------
+/.work/
+/.worktrees/
+.worktrees/
+/.audit-tmp/
+/.codex-tmp/
+/.codex-security/
+/.codex-plugin/
+/.tmp-test/
+/.npm-cache/
+tmp/
+tmp*/
+/tmpa*/
+/tmp-write-check-*/
+/pytest-cache-files-*/
+pytesttmp*/
+/_ptmp_root*/
+/_tmp_pytest/
+/pytest_collected/
+/.tmp-rules-test.rules
+/.venv-run/
+/.venv2/
+
+# Ignore pytest and temporary test artifacts globally
+.pytest-local*/
+__temp__/
+inline-snapshot-*/
+pytest-of-*/
+pytesttmp*/
+tmp_pytest*/
+.audit-tmp/
+.codex-tmp/
+.tmp-test/
+pytest-cache-files-*/
+pytest-base/
+
+# Probes / debug artifacts (created during runs)
+/probe-dir-*/
+probe-ps-dir/
+probe-py-dir/
+/.probe-dir-*/
+
+/_root_probe_write.txt
+
+# Pytest temp roots (created by harness)
+/zztmp_pytest_root*/
+zztmp_pytest_root*/
+
+# Ignore ad-hoc probe file inside codex security
+/.codex-security/_probe_write.txt
+/.codex-security/acl-repair/
+
+# Harness runtime session artifacts
+/running/sessions/
+
+# Nexus map (generated, includes binaries)
+.nexus-map/
+
+# Codex smoke test directories
+codex-smoke-*/

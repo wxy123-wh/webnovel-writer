@@ -1,0 +1,695 @@
+{
+    "version":  4,
+    "created_at":  "2026-03-27",
+    "workflow_mode":  "long_running_development_harness",
+    "source":  "docs/prd-refined.md",
+    "rules":  {
+                  "immutable_fields_after_init":  [
+                                                      "id",
+                                                      "title",
+                                                      "description",
+                                                      "category",
+                                                      "milestone",
+                                                      "priority",
+                                                      "risk_level",
+                                                      "steps",
+                                                      "verification"
+                                                  ],
+                  "mutable_fields_during_execution":  [
+                                                          "status",
+                                                          "passes",
+                                                          "claimed_by",
+                                                          "claimed_at",
+                                                          "started_at",
+                                                          "completed_at",
+                                                          "blocked_reason",
+                                                          "human_help_requested",
+                                                          "handoff_requested_at",
+                                                          "defer_to_tail",
+                                                          "failure_count",
+                                                          "last_failure_summary",
+                                                          "requeued_at",
+                                                          "notes",
+                                                          "last_verified_at"
+                                                      ]
+              },
+    "features":  [
+                     {
+                         "id":  "T002",
+                         "title":  "M1 SkillsPage read-only conversion",
+                         "description":  "Remove create/enable/disable/delete entry points from SkillsPage while keeping read list and detail rendering.",
+                         "category":  "product",
+                         "milestone":  "M1",
+                         "priority":  2,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Remove write buttons and handlers from SkillsPage",
+                                       "Drop frontend write API usage from skills page flow",
+                                       "Keep read calls and loading/error states"
+                                   ],
+                         "verification":  {
+                                              "type":  "frontend_build_and_playwright",
+                                              "commands":  [
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run build",
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run preview -- --host 127.0.0.1 --port 4173",
+                                                               "Playwright MCP checklist: SkillsPage read-only"
+                                                           ],
+                                              "checks":  [
+                                                             "No write controls visible on SkillsPage",
+                                                             "Skill list still renders",
+                                                             "Read-only hint is visible"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[DISPATCH 2026-03-28T06:21:39] Claimed by sisyphus-dispatcher\n[DISPATCH 2026-03-28T08:15:28] Claimed by sisyphus-dispatcher\n[DISPATCH 2026-03-28T08:17:31] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T08:25:12] run=20260328-062139-02-T002 Coding worker exit code -1\n[BLOCKED 2026-03-28T08:25:14] run=20260328-053102-02-T002 Coding worker exit code -1\n[BLOCKED 2026-03-28T08:25:15] run=20260328-053749-02-T002 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)\n[DISPATCH 2026-03-28T09:39:55] Claimed by sisyphus-dispatcher\n[DISPATCH 2026-03-28T22:54:41] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T22:54:51] run=20260328-225441-01-T002 Coding worker exit code ",
+                         "last_verified_at":  "2026-03-28T22:54:51",
+                         "status":  "pending",
+                         "claimed_by":  "sisyphus-dispatcher",
+                         "claimed_at":  "2026-03-28T22:54:41",
+                         "started_at":  "2026-03-28T22:54:41",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "2026-03-28T22:54:51",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T003",
+                         "title":  "M1 SettingsPage read-only conversion",
+                         "description":  "Remove settings write, dictionary extract, and conflict resolve actions from SettingsPage while preserving browsing.",
+                         "category":  "product",
+                         "milestone":  "M1",
+                         "priority":  3,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Hide write/extract/resolve controls",
+                                       "Remove associated click handlers and mutation requests",
+                                       "Preserve tree and dictionary read rendering"
+                                   ],
+                         "verification":  {
+                                              "type":  "frontend_build_and_playwright",
+                                              "commands":  [
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run build",
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run preview -- --host 127.0.0.1 --port 4173",
+                                                               "Playwright MCP checklist: SettingsPage read-only"
+                                                           ],
+                                              "checks":  [
+                                                             "No write actions visible on SettingsPage",
+                                                             "Settings files and dictionary read still work",
+                                                             "No mutation network calls are emitted"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[DISPATCH 2026-03-28T08:19:05] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T08:25:13] run=20260328-081905-01-T003 Coding worker exit code -1\n[BLOCKED 2026-03-28T08:25:14] run=20260328-055118-01-T003 Coding worker exit code -1\n[BLOCKED 2026-03-28T08:25:15] run=20260328-053831-03-T003 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)\n[DISPATCH 2026-03-28T09:49:06] Claimed by sisyphus-dispatcher",
+                         "last_verified_at":  "2026-03-28T08:25:15",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T004",
+                         "title":  "M1 OutlineWorkspacePage read-only conversion",
+                         "description":  "Remove split/resplit/apply/edit-assist mutation entry points from outline workspace while preserving read-only visualization.",
+                         "category":  "product",
+                         "milestone":  "M1",
+                         "priority":  4,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Hide split/resplit/apply UI controls",
+                                       "Remove edit-assist write triggers",
+                                       "Keep outline read browsing intact"
+                                   ],
+                         "verification":  {
+                                              "type":  "frontend_build_and_playwright",
+                                              "commands":  [
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run build",
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run preview -- --host 127.0.0.1 --port 4173",
+                                                               "Playwright MCP checklist: OutlineWorkspacePage read-only"
+                                                           ],
+                                              "checks":  [
+                                                             "No split/resplit/apply controls visible",
+                                                             "Outline data still displays",
+                                                             "No edit-assist mutation request is fired"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:14] run=20260328-050954-01-T004 Coding worker exit code -1\n[BLOCKED 2026-03-28T08:25:14] run=20260328-055119-02-T004 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)\n[DISPATCH 2026-03-28T09:49:07] Claimed by sisyphus-dispatcher",
+                         "last_verified_at":  "2026-03-28T08:25:14",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T005",
+                         "title":  "M1 FilesPage read-only conversion",
+                         "description":  "Remove codex launch and other write-intent actions from FilesPage while preserving read navigation.",
+                         "category":  "product",
+                         "milestone":  "M1",
+                         "priority":  5,
+                         "risk_level":  "medium",
+                         "steps":  [
+                                       "Hide split-dialog and file-edit launch controls",
+                                       "Remove codex bridge mutation calls from FilesPage",
+                                       "Retain file-tree and file-read interactions"
+                                   ],
+                         "verification":  {
+                                              "type":  "frontend_build_and_playwright",
+                                              "commands":  [
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run build",
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run preview -- --host 127.0.0.1 --port 4173",
+                                                               "Playwright MCP checklist: FilesPage read-only"
+                                                           ],
+                                              "checks":  [
+                                                             "No codex launch controls visible on FilesPage",
+                                                             "File tree and content preview still work",
+                                                             "Read-only mode label appears"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:14] run=20260328-050955-02-T005 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)\n[DISPATCH 2026-03-28T10:05:23] Claimed by sisyphus-dispatcher",
+                         "last_verified_at":  "2026-03-28T08:25:14",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T006",
+                         "title":  "M1 remove dashboard write routes (runtime/skills/settings)",
+                         "description":  "Physically delete POST/PATCH/DELETE write endpoints for runtime migrate, skills mutate, and settings write/extract/resolve.",
+                         "category":  "product",
+                         "milestone":  "M1",
+                         "priority":  6,
+                         "risk_level":  "critical",
+                         "steps":  [
+                                       "Delete route definitions from routers",
+                                       "Remove request models and handlers used only by deleted routes",
+                                       "Ensure deleted endpoints return 404"
+                                   ],
+                         "verification":  {
+                                              "type":  "api_tests",
+                                              "commands":  [
+                                                               "cd webnovel-writer/dashboard \u0026\u0026 pytest tests/test_runtime_api.py tests/test_skills_api.py tests/test_settings_dictionary_api.py"
+                                                           ],
+                                              "checks":  [
+                                                             "Removed runtime/skills/settings write endpoints are unreachable",
+                                                             "Read endpoints still return 200",
+                                                             "Router import graph remains valid"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:14] run=20260328-051153-01-T006 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)\n[DISPATCH 2026-03-28T10:05:24] Claimed by sisyphus-dispatcher",
+                         "last_verified_at":  "2026-03-28T08:25:14",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T007",
+                         "title":  "M1 remove dashboard write routes (outlines/edit-assist/codex) and dead services",
+                         "description":  "Physically delete outlines/edit-assist/codex write endpoints and prune unreferenced service/model code.",
+                         "category":  "product",
+                         "milestone":  "M1",
+                         "priority":  7,
+                         "risk_level":  "critical",
+                         "steps":  [
+                                       "Delete outlines and edit-assist mutation routes",
+                                       "Delete codex bridge write routes",
+                                       "Remove dead services/models and router mounts"
+                                   ],
+                         "verification":  {
+                                              "type":  "api_tests",
+                                              "commands":  [
+                                                               "cd webnovel-writer/dashboard \u0026\u0026 pytest tests/test_outlines_split_api.py tests/test_outlines_resplit_api.py tests/test_edit_assist_api.py tests/test_codex_bridge_api.py"
+                                                           ],
+                                              "checks":  [
+                                                             "All PRD-listed write APIs are removed",
+                                                             "Read-only APIs remain healthy",
+                                                             "Dashboard app starts without import errors"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[DISPATCH 2026-03-28T11:06:57] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T11:07:07] run=20260328-110657-01-T007 Coding worker exit code 2",
+                         "last_verified_at":  "2026-03-28T11:07:07",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "2026-03-28T11:07:07",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T008",
+                         "title":  "M1 acceptance gate and migration notes",
+                         "description":  "Finalize M1 by validating read-only UX, removed backend APIs, and migration guidance for callers of deleted endpoints.",
+                         "category":  "quality",
+                         "milestone":  "M1",
+                         "priority":  8,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Run dashboard backend tests for read-only contract",
+                                       "Run frontend build and Playwright evidence capture",
+                                       "Document endpoint removals and migration notes"
+                                   ],
+                         "verification":  {
+                                              "type":  "acceptance",
+                                              "commands":  [
+                                                               "cd webnovel-writer/dashboard \u0026\u0026 pytest tests",
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run build",
+                                                               "Playwright MCP checklist: M1 full acceptance"
+                                                           ],
+                                              "checks":  [
+                                                             "Frontend shows no write entry points on 4 pages",
+                                                             "Removed backend write APIs are absent",
+                                                             "Migration notes exist in docs"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[DISPATCH 2026-03-28T11:06:58] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T11:07:07] run=20260328-110658-02-T008 Coding worker exit code 2",
+                         "last_verified_at":  "2026-03-28T11:07:07",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "2026-03-28T11:07:07",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T009",
+                         "title":  "M2 add unified webnovel codex command group",
+                         "description":  "Expose codex as a first-class CLI command group with deterministic help and argument validation.",
+                         "category":  "product",
+                         "milestone":  "M2",
+                         "priority":  9,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Add codex group parser",
+                                       "Register subcommand stubs for session/index/rag",
+                                       "Ensure help text documents required arguments"
+                                   ],
+                         "verification":  {
+                                              "type":  "cli",
+                                              "commands":  [
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py --help",
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex --help"
+                                                           ],
+                                              "checks":  [
+                                                             "webnovel --help lists codex",
+                                                             "webnovel codex --help succeeds",
+                                                             "Invalid subcommand usage returns non-zero with guidance"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:14] run=20260328-051415-02-T009 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)\n[DISPATCH 2026-03-28T22:16:15] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T22:16:24] run=20260328-221615-01-T009 Coding worker exit code 2\n[DISPATCH 2026-03-28T22:24:42] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T22:24:51] run=20260328-222442-01-T009 Coding worker exit code 2\n[DISPATCH 2026-03-28T22:32:38] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T22:32:47] run=20260328-223238-01-T009 Coding worker exit code 2\n[DISPATCH 2026-03-28T22:34:59] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T22:35:08] run=20260328-223459-01-T009 Coding worker exit code 2",
+                         "last_verified_at":  "2026-03-28T22:35:08",
+                         "status":  "pending",
+                         "claimed_by":  "sisyphus-dispatcher",
+                         "claimed_at":  "2026-03-28T22:34:59",
+                         "started_at":  "2026-03-28T22:34:59",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "2026-03-28T22:35:08",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T010",
+                         "title":  "M2 implement codex session start/stop",
+                         "description":  "Implement session start/stop with profile selection (battle/description/consistency) and session metadata lifecycle.",
+                         "category":  "product",
+                         "milestone":  "M2",
+                         "priority":  10,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Implement session start command and return session id",
+                                       "Implement session stop command and cleanup hooks",
+                                       "Persist session metadata under project-scoped .webnovel/codex"
+                                   ],
+                         "verification":  {
+                                              "type":  "cli_integration",
+                                              "commands":  [
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex session start --profile battle --project-root \u003cPROJECT_ROOT\u003e",
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex session stop --session-id \u003cSESSION_ID\u003e --project-root \u003cPROJECT_ROOT\u003e"
+                                                           ],
+                                              "checks":  [
+                                                             "session start returns a valid session id",
+                                                             "session stop accepts session id and exits 0",
+                                                             "session lifecycle metadata is written under project scope"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:12] run=20260328-051625-01-T010 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)",
+                         "last_verified_at":  "2026-03-28T08:25:12",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T011",
+                         "title":  "M2 implement project-scoped index status artifacts",
+                         "description":  "Implement index status persistence and canonical codex index files under .webnovel/codex.",
+                         "category":  "product",
+                         "milestone":  "M2",
+                         "priority":  11,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Create/maintain fast-index.json",
+                                       "Create/maintain index-state.json",
+                                       "Expose index status command output"
+                                   ],
+                         "verification":  {
+                                              "type":  "cli_integration",
+                                              "commands":  [
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex index status --project-root \u003cPROJECT_ROOT\u003e"
+                                                           ],
+                                              "checks":  [
+                                                             "index status command returns deterministic JSON",
+                                                             "fast-index.json exists under project .webnovel/codex",
+                                                             "index-state.json exists under project .webnovel/codex"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:15] run=20260328-051625-02-T011 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)",
+                         "last_verified_at":  "2026-03-28T08:25:15",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T012",
+                         "title":  "M2 file watcher and incremental auto-index",
+                         "description":  "Add file-change watcher with polling fallback to trigger incremental index updates for chapter/outline/detail-outline.",
+                         "category":  "product",
+                         "milestone":  "M2",
+                         "priority":  12,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Implement cross-platform file watch with fallback polling",
+                                       "Trigger incremental index update per changed file",
+                                       "Record watch events to watch-events.jsonl"
+                                   ],
+                         "verification":  {
+                                              "type":  "integration",
+                                              "commands":  [
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex index watch --project-root \u003cPROJECT_ROOT\u003e --duration 30"
+                                                           ],
+                                              "checks":  [
+                                                             "File changes trigger incremental indexing automatically",
+                                                             "watch-events.jsonl records each event",
+                                                             "Change-to-searchable latency evidence is captured"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:15] run=20260328-051855-01-T012 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)",
+                         "last_verified_at":  "2026-03-28T08:25:15",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T013",
+                         "title":  "M2 fast lookup by chapter number and scene tag",
+                         "description":  "Deliver deterministic lookup capability keyed by chapter number and scene tag from incremental index data.",
+                         "category":  "product",
+                         "milestone":  "M2",
+                         "priority":  13,
+                         "risk_level":  "medium",
+                         "steps":  [
+                                       "Implement chapter-number lookup path",
+                                       "Implement scene-tag lookup path",
+                                       "Return stable machine-readable output for both lookups"
+                                   ],
+                         "verification":  {
+                                              "type":  "cli_integration",
+                                              "commands":  [
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex index query --project-root \u003cPROJECT_ROOT\u003e --chapter 12",
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex index query --project-root \u003cPROJECT_ROOT\u003e --scene-tag confrontation"
+                                                           ],
+                                              "checks":  [
+                                                             "Chapter lookup returns expected targets",
+                                                             "Scene-tag lookup returns expected targets",
+                                                             "Output format is stable for automation"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:15] run=20260328-051856-02-T013 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)",
+                         "last_verified_at":  "2026-03-28T08:25:15",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T014",
+                         "title":  "M3 session-scoped skill profile loader",
+                         "description":  "Load selected skill profile into session-local directory only, and clean artifacts on session stop without touching global Codex paths.",
+                         "category":  "product",
+                         "milestone":  "M3",
+                         "priority":  14,
+                         "risk_level":  "critical",
+                         "steps":  [
+                                       "Add profile templates for battle/description/consistency",
+                                       "Load profiles into .webnovel/codex/sessions/\u003csession_id\u003e/skills",
+                                       "Enforce global skill-path no-write guard and cleanup on stop"
+                                   ],
+                         "verification":  {
+                                              "type":  "integration",
+                                              "commands":  [
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex session start --profile consistency --project-root \u003cPROJECT_ROOT\u003e",
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex session stop --session-id \u003cSESSION_ID\u003e --project-root \u003cPROJECT_ROOT\u003e"
+                                                           ],
+                                              "checks":  [
+                                                             "Session-local skill directory is created with selected profile",
+                                                             "Global Codex skill path remains unchanged",
+                                                             "Session stop removes session-local skill artifacts"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:15] run=20260328-052203-01-T014 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)",
+                         "last_verified_at":  "2026-03-28T08:25:15",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T015",
+                         "title":  "M3 implement codex rag verify metrics command",
+                         "description":  "Implement webnovel codex rag verify with connectivity, correctness, and performance metrics in JSON plus threshold-based pass/fail.",
+                         "category":  "product",
+                         "milestone":  "M3",
+                         "priority":  15,
+                         "risk_level":  "critical",
+                         "steps":  [
+                                       "Implement connectivity checks for vectors.db/index.db/schema/min query",
+                                       "Implement correctness metrics: Hit@5, MRR@10, chapter constraint accuracy",
+                                       "Implement performance metrics: retrieval p95/p99, incremental indexing p95, visibility latency p95"
+                                   ],
+                         "verification":  {
+                                              "type":  "benchmark",
+                                              "commands":  [
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex rag verify --project-root \u003cPROJECT_ROOT\u003e --report json"
+                                                           ],
+                                              "checks":  [
+                                                             "JSON report includes all required metrics",
+                                                             "Threshold violations produce non-zero exit",
+                                                             "Pass summary is machine-readable"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.",
+                         "last_verified_at":  "2026-03-28T05:38:31",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T016",
+                         "title":  "M3 CI gate and final acceptance package",
+                         "description":  "Integrate rag verify into CI as blocking gate and update README/docs/operations to match implemented behavior and migration path.",
+                         "category":  "release",
+                         "milestone":  "M3",
+                         "priority":  16,
+                         "risk_level":  "high",
+                         "steps":  [
+                                       "Wire rag verify into CI workflow as required job",
+                                       "Update docs for read-only dashboard and codex unified workflow",
+                                       "Run full acceptance regression and record evidence"
+                                   ],
+                         "verification":  {
+                                              "type":  "release_gate",
+                                              "commands":  [
+                                                               "cd webnovel-writer \u0026\u0026 pytest",
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run build",
+                                                               "python -X utf8 webnovel-writer/scripts/webnovel.py codex rag verify --project-root \u003cPROJECT_ROOT\u003e --report json"
+                                                           ],
+                                              "checks":  [
+                                                             "CI fails when rag verify fails",
+                                                             "Docs reflect actual commands and endpoint removals",
+                                                             "All tasks are done with passes=true before release"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[BLOCKED 2026-03-28T08:25:13] run=20260328-052705-01-T016 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)",
+                         "last_verified_at":  "2026-03-28T08:25:13",
+                         "status":  "pending",
+                         "claimed_by":  "",
+                         "claimed_at":  "",
+                         "started_at":  "",
+                         "completed_at":  "",
+                         "blocked_reason":  "",
+                         "human_help_requested":  false,
+                         "handoff_requested_at":  "",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     },
+                     {
+                         "id":  "T001",
+                         "title":  "M1 read-only contract and shared indicator",
+                         "description":  "Introduce a single read-only display contract and shared UI hint used by the 4 frozen pages.",
+                         "category":  "product",
+                         "milestone":  "M1",
+                         "priority":  1,
+                         "risk_level":  "medium",
+                         "steps":  [
+                                       "Create shared read-only mode helper and copy text",
+                                       "Wire helper into page scaffold or common layout",
+                                       "Ensure write-intent UI branches are gated by read-only contract"
+                                   ],
+                         "verification":  {
+                                              "type":  "frontend_build_and_tests",
+                                              "commands":  [
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm run build",
+                                                               "cd webnovel-writer/dashboard/frontend \u0026\u0026 npm test -- --runInBand"
+                                                           ],
+                                              "checks":  [
+                                                             "Frontend build succeeds",
+                                                             "Shared read-only hint renders on target pages",
+                                                             "No runtime errors after helper integration"
+                                                         ]
+                                          },
+                         "passes":  false,
+                         "notes":  "[RESET 2026-03-28] Ready for dispatch.\n[DISPATCH 2026-03-28T06:21:38] Claimed by sisyphus-dispatcher\n[DISPATCH 2026-03-28T08:02:47] Claimed by sisyphus-dispatcher\n[DISPATCH 2026-03-28T08:17:30] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T08:25:14] run=20260328-053101-01-T001 Coding worker exit code -1\n[BLOCKED 2026-03-28T08:25:15] run=20260328-062137-01-T001 Coding worker exit code -1\n[BLOCKED 2026-03-28T08:25:15] run=20260328-053748-01-T001 Coding worker exit code -1\n[BLOCKED 2026-03-28T08:25:16] run=20260328-053436-01-T001 Coding worker exit code -1\n[RESET 2026-03-28T09:27:26] Reset to pending (stdin fix applied)\n[DISPATCH 2026-03-28T09:39:54] Claimed by sisyphus-dispatcher\n[DISPATCH 2026-03-28T22:50:24] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T22:50:33] run=20260328-225024-01-T001 Coding worker exit code \n[DISPATCH 2026-03-28T22:51:51] Claimed by sisyphus-dispatcher\n[BLOCKED 2026-03-28T22:52:00] run=20260328-225151-01-T001 Coding worker exit code ",
+                         "last_verified_at":  "2026-03-28T22:52:00",
+                         "status":  "blocked",
+                         "claimed_by":  "sisyphus-dispatcher",
+                         "claimed_at":  "2026-03-28T22:51:51",
+                         "started_at":  "2026-03-28T22:51:51",
+                         "completed_at":  "",
+                         "blocked_reason":  "Coding worker exit code ",
+                         "human_help_requested":  true,
+                         "handoff_requested_at":  "2026-03-28T22:52:00",
+                         "defer_to_tail":  false,
+                         "failure_count":  0,
+                         "last_failure_summary":  "",
+                         "requeued_at":  ""
+                     }
+                 ]
+}

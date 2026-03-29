@@ -1,15 +1,18 @@
 """
 Webnovel Dashboard - FastAPI 主应用
 
-提供现有只读接口 + OpenSpec 冻结写接口骨架；所有文件读取经过 path_guard 防穿越校验。
+提供当前主线的只读接口；所有文件读取经过 path_guard 防穿越校验。
 """
 
 import asyncio
+import base64
+import binascii
 import json
+import secrets
 import sqlite3
-from contextlib import asynccontextmanager, closing
+from contextlib import asynccontextmanager, closing, suppress
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,20 +21,14 @@ from fastapi.staticfiles import StaticFiles
 
 from .models.common import ApiErrorResponse
 from .path_guard import safe_resolve
-from .routers import (
-    edit_assist_router,
-    outlines_router,
-    runtime_router,
-    settings_dictionary_router,
-    settings_files_router,
-    skills_router,
-)
+from .routers import runtime_router
 from .watcher import FileWatcher
 
 # ---------------------------------------------------------------------------
 # 全局状态
 # ---------------------------------------------------------------------------
-_project_root: Path | None = None
+# P0-B 修复：移除全局 _project_root，改用 app.state.project_root 传递
+# 避免线程不安全和多 worker 时内存不共享问题
 _watcher = FileWatcher()
 
 STATIC_DIR = Path(__file__).parent / "frontend" / "dist"
@@ -129,52 +126,153 @@ def _raise_api_error(
     )
 
 
+def _unauthorized_response(request: Request) -> JSONResponse:
+    payload = _api_error_payload(
+        error_code="unauthorized",
+        message="需要有效的 Basic Auth 凭据",
+        details=None,
+        request_id=request.headers.get("x-request-id"),
+    )
+    return JSONResponse(
+        status_code=401,
+        content=payload,
+        headers={"WWW-Authenticate": 'Basic realm="Webnovel Dashboard"'},
+    )
+
+
+def _parse_basic_auth_header(header_value: str | None) -> tuple[str, str] | None:
+    if not header_value:
+        return None
+    scheme, _, token = header_value.partition(" ")
+    if scheme.lower() != "basic" or not token:
+        return None
+    try:
+        decoded = base64.b64decode(token).decode("utf-8")
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return None
+    username, sep, password = decoded.partition(":")
+    if not sep:
+        return None
+    return username, password
+
+
 def _is_missing_table_error(exc: sqlite3.OperationalError) -> bool:
     return "no such table" in str(exc).lower()
 
 
-def _get_project_root() -> Path:
-    if _project_root is None:
+def _get_project_root_from_app(app: "FastAPI") -> Path:
+    """P0-B 修复：从 app.state 读取 project_root，保证线程安全。"""
+    root = getattr(app.state, "project_root", None)
+    if root is None:
         _raise_api_error(
             500,
             error_code="runtime_project_root_unavailable",
             message="项目根目录未配置",
         )
-    return _project_root
+    return root  # type: ignore[return-value]
 
 
-def _webnovel_dir() -> Path:
-    return _get_project_root() / ".webnovel"
+def _webnovel_dir_from_app(app: "FastAPI") -> Path:
+    """P0-B 修复：返回 .webnovel 目录路径，依赖 app.state 而非全局变量。"""
+    return _get_project_root_from_app(app) / ".webnovel"
 
 
-# ---------------------------------------------------------------------------
-# 应用工厂
-# ---------------------------------------------------------------------------
+def _resolve_project_root_from_pointer() -> Path | None:
+    """P0-B 修复保留：从 `.codex` 目录下的 pointer 文件自动恢复 project_root。
 
-def create_app(project_root: str | Path | None = None) -> FastAPI:
-    global _project_root
+    在 uvicorn --reload 场景下，app.state 会被重置，
+    通过此函数可以从持久化的 pointer 文件恢复，无需重启服务或重新传参。
+    """
+    cwd = Path.cwd()
+    for dirname in (".codex",):
+        pointer = cwd / dirname / ".webnovel-current-project"
+        if not pointer.is_file():
+            continue
+        try:
+            target_str = pointer.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if not target_str:
+            continue
+        target = Path(target_str).expanduser()
+        if not target.is_absolute():
+            target = cwd / target
+        with suppress(OSError):
+            target = target.resolve()
+        if target.is_dir() and (target / ".webnovel" / "state.json").is_file():
+            return target
+    return None
 
-    if project_root:
-        _project_root = Path(project_root).resolve()
+
+def create_app(
+    project_root: str | Path | None = None,
+    allowed_origins: list[str] | None = None,
+    basic_auth_credentials: tuple[str, str] | None = None,
+) -> FastAPI:
+    """创建 FastAPI 应用。
+
+    Args:
+        project_root: 项目根目录路径，优先级高于 pointer 文件。
+        allowed_origins: P0-A 修复 —— 允许的 CORS 来源列表。
+            生产环境应传入具体来源如 ["http://localhost:8765"]，
+            None 时默认为 localhost 本地地址。
+    """
+    # P0-A 修复：CORS 来源不再硬编码为 "*"
+    _allowed_origins: list[str] = allowed_origins if allowed_origins is not None else [
+        "http://localhost:8765",
+        "http://127.0.0.1:8765",
+    ]
+
+    # P0-B 修复：将 project_root 存入局部变量，后续通过 app.state 传递
+    _initial_root: Path | None = Path(project_root).resolve() if project_root else None
 
     @asynccontextmanager
-    async def _lifespan(_: FastAPI):
-        webnovel = _webnovel_dir()
-        if webnovel.is_dir():
-            _watcher.start(webnovel, asyncio.get_running_loop())
+    async def _lifespan(app: FastAPI):
+        # P0-B 修复：优先使用启动时传入的路径，热重载后尝试从 pointer 文件恢复
+        if app.state.project_root is None:
+            recovered = _resolve_project_root_from_pointer()
+            if recovered is not None:
+                app.state.project_root = recovered
+        webnovel_path = app.state.project_root / ".webnovel" if app.state.project_root else None
+        if webnovel_path and webnovel_path.is_dir():
+            _watcher.start(webnovel_path, asyncio.get_running_loop())
         try:
             yield
         finally:
             _watcher.stop()
 
     app = FastAPI(title="Webnovel Dashboard", version="0.1.0", lifespan=_lifespan)
+    # P0-B 修复：project_root 存入 app.state，线程安全且多 worker 友好
+    app.state.project_root = _initial_root
+    app.state.basic_auth_credentials = basic_auth_credentials
 
+    # P0-A 修复：使用参数控制的 CORS 来源，避免全开放
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_allowed_origins,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def _basic_auth_guard(request: Request, call_next):
+        credentials = getattr(app.state, "basic_auth_credentials", None)
+        if not credentials or request.url.path == "/health":
+            return await call_next(request)
+
+        provided = _parse_basic_auth_header(request.headers.get("authorization"))
+        if provided is None:
+            return _unauthorized_response(request)
+
+        expected_user, expected_password = credentials
+        provided_user, provided_password = provided
+        if not (
+            secrets.compare_digest(provided_user, expected_user)
+            and secrets.compare_digest(provided_password, expected_password)
+        ):
+            return _unauthorized_response(request)
+
+        return await call_next(request)
 
     @app.exception_handler(HTTPException)
     async def _api_http_exception_handler(request: Request, exc: HTTPException):
@@ -218,22 +316,61 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
 
         return JSONResponse(status_code=500, content=payload)
 
-    # OpenSpec 冻结新增能力路由骨架（T02）
+    # M1 阶段：仅保留只读路由
+    # 写接口已全部删除，由 CLI 统一入口 `webnovel codex` 承载
     app.include_router(runtime_router)
-    app.include_router(skills_router)
-    app.include_router(settings_files_router)
-    app.include_router(settings_dictionary_router)
-    app.include_router(outlines_router)
-    app.include_router(edit_assist_router)
 
     # ===========================================================
     # API：项目元信息
     # ===========================================================
 
+    # P1-F：标准健康检查端点，无需项目根目录，供 Docker/K8s 存活探针使用
+    @app.get("/health")
+    def health():
+        """健康检查端点，始终返回 200，无依赖关系。"""
+        return {"status": "ok", "version": "0.1.0"}
+
+    @app.get("/api/project/root")
+    def project_root_status():
+        """P0-B 修复：返回当前配置的项目根目录和就绪状态，供前端健康检查。
+
+        - status="ok"：项目根目录已配置且 state.json 存在
+        - status="unavailable"：project_root 未配置（如 uvicorn --reload 后自动恢复失败）
+        - status="invalid"：目录存在但 state.json 缺失（项目未初始化）
+        """
+        root = app.state.project_root
+        if root is None:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "unavailable",
+                    "project_root": None,
+                    "index_db_exists": False,
+                    "message": "项目根目录未配置，请重启 Dashboard 并传入 --project-root 参数",
+                },
+            )
+        state_path = root / ".webnovel" / "state.json"
+        index_db = root / ".webnovel" / "index.db"
+        if not state_path.is_file():
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "invalid",
+                    "project_root": str(root),
+                    "index_db_exists": index_db.is_file(),
+                    "message": "项目根目录缺少 .webnovel/state.json，请先执行 /webnovel-init",
+                },
+            )
+        return {
+            "status": "ok",
+            "project_root": str(root),
+            "index_db_exists": index_db.is_file(),
+        }
+
     @app.get("/api/project/info")
     def project_info():
         """返回 state.json 完整内容（只读）。"""
-        state_path = _webnovel_dir() / "state.json"
+        state_path = _webnovel_dir_from_app(app) / "state.json"
         if not state_path.is_file():
             raise HTTPException(404, "state.json 不存在")
         return json.loads(state_path.read_text(encoding="utf-8"))
@@ -243,7 +380,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
     # ===========================================================
 
     def _get_db() -> sqlite3.Connection:
-        db_path = _webnovel_dir() / "index.db"
+        db_path = _webnovel_dir_from_app(app) / "index.db"
         if not db_path.is_file():
             _raise_api_error(
                 404,
@@ -324,7 +461,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
 
     @app.get("/api/entities")
     def list_entities(
-        entity_type: Optional[str] = Query(None, alias="type"),
+        entity_type: str | None = Query(None, alias="type"),
         include_archived: bool = False,
     ):
         """列出所有实体（可按类型过滤）。"""
@@ -357,7 +494,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             return dict(row)
 
     @app.get("/api/relationships")
-    def list_relationships(entity: Optional[str] = None, limit: int = 200):
+    def list_relationships(entity: str | None = None, limit: int = 200):
         with closing(_get_db()) as conn:
             if entity:
                 rows = conn.execute(
@@ -373,9 +510,9 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
 
     @app.get("/api/relationship-events")
     def list_relationship_events(
-        entity: Optional[str] = None,
-        from_chapter: Optional[int] = None,
-        to_chapter: Optional[int] = None,
+        entity: str | None = None,
+        from_chapter: int | None = None,
+        to_chapter: int | None = None,
         limit: int = 200,
     ):
         with closing(_get_db()) as conn:
@@ -405,7 +542,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             return [dict(r) for r in rows]
 
     @app.get("/api/scenes")
-    def list_scenes(chapter: Optional[int] = None, limit: int = 500):
+    def list_scenes(chapter: int | None = None, limit: int = 500):
         with closing(_get_db()) as conn:
             if chapter is not None:
                 rows = conn.execute(
@@ -434,7 +571,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             return [dict(r) for r in rows]
 
     @app.get("/api/state-changes")
-    def list_state_changes(entity: Optional[str] = None, limit: int = 100):
+    def list_state_changes(entity: str | None = None, limit: int = 100):
         with closing(_get_db()) as conn:
             if entity:
                 rows = conn.execute(
@@ -448,7 +585,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             return [dict(r) for r in rows]
 
     @app.get("/api/aliases")
-    def list_aliases(entity: Optional[str] = None):
+    def list_aliases(entity: str | None = None):
         with closing(_get_db()) as conn:
             if entity:
                 rows = conn.execute(
@@ -519,7 +656,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
                 "entities": entity_count,
                 "relationships": relationship_count,
                 "chapters": chapter_count,
-                "files": _content_file_count(_get_project_root()),
+                "files": _content_file_count(_get_project_root_from_app(app)),
             },
             "reading_power": {
                 "total_rows": int(reading_agg.get("total_rows") or 0),
@@ -628,7 +765,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
     # ===========================================================
 
     @app.get("/api/overrides")
-    def list_overrides(status: Optional[str] = None, limit: int = 100):
+    def list_overrides(status: str | None = None, limit: int = 100):
         with closing(_get_db()) as conn:
             if status:
                 return _fetchall_safe(
@@ -643,7 +780,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             )
 
     @app.get("/api/debts")
-    def list_debts(status: Optional[str] = None, limit: int = 100):
+    def list_debts(status: str | None = None, limit: int = 100):
         with closing(_get_db()) as conn:
             if status:
                 return _fetchall_safe(
@@ -658,7 +795,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             )
 
     @app.get("/api/debt-events")
-    def list_debt_events(debt_id: Optional[int] = None, limit: int = 200):
+    def list_debt_events(debt_id: int | None = None, limit: int = 200):
         with closing(_get_db()) as conn:
             if debt_id is not None:
                 return _fetchall_safe(
@@ -673,7 +810,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             )
 
     @app.get("/api/invalid-facts")
-    def list_invalid_facts(status: Optional[str] = None, limit: int = 100):
+    def list_invalid_facts(status: str | None = None, limit: int = 100):
         with closing(_get_db()) as conn:
             if status:
                 return _fetchall_safe(
@@ -688,7 +825,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             )
 
     @app.get("/api/rag-queries")
-    def list_rag_queries(query_type: Optional[str] = None, limit: int = 100):
+    def list_rag_queries(query_type: str | None = None, limit: int = 100):
         with closing(_get_db()) as conn:
             if query_type:
                 return _fetchall_safe(
@@ -703,7 +840,7 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
             )
 
     @app.get("/api/tool-stats")
-    def list_tool_stats(tool_name: Optional[str] = None, limit: int = 200):
+    def list_tool_stats(tool_name: str | None = None, limit: int = 200):
         with closing(_get_db()) as conn:
             if tool_name:
                 return _fetchall_safe(
@@ -733,20 +870,21 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
     @app.get("/api/files/tree")
     def file_tree():
         """列出 正文/、大纲/、设定集/ 三个目录的树结构。"""
-        root = _get_project_root()
+        root = _get_project_root_from_app(app)
         result = {}
         for folder_name in ("正文", "大纲", "设定集"):
             folder = root / folder_name
             if not folder.is_dir():
                 result[folder_name] = []
                 continue
-            result[folder_name] = _walk_tree(folder, root)
+            # P0-C 修复：传入 max_depth 限制防止深层目录引发栈溢出
+            result[folder_name] = _walk_tree(folder, root, max_depth=20)
         return result
 
     @app.get("/api/files/read")
     def file_read(path: str):
         """只读读取一个文件内容（限 正文/大纲/设定集 目录）。"""
-        root = _get_project_root()
+        root = _get_project_root_from_app(app)
         resolved = safe_resolve(root, path)
 
         # 二次限制：只允许三大目录
@@ -781,8 +919,20 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
 
     @app.get("/api/events")
     async def sse():
-        """Server-Sent Events 端点，推送 .webnovel/ 下的文件变更。"""
+        """P1-C 修复：Server-Sent Events 端点，推送 .webnovel/ 下的文件变更。
+
+        连接数超过 MAX_SSE_CLIENTS（50）时返回 503，防止 DoS 攻击导致内存耗尽。
+        """
+        # P1-C 修复：订阅前检查连接数上限
         q = _watcher.subscribe()
+        if q is None:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error_code": "sse_clients_limit_reached",
+                    "message": f"SSE 连接已满（上限 {_watcher.DEFAULT_MAX_SSE_CLIENTS}），请稍后重试",
+                },
+            )
 
         async def _gen():
             try:
@@ -826,12 +976,36 @@ def create_app(project_root: str | Path | None = None) -> FastAPI:
 # 辅助函数
 # ---------------------------------------------------------------------------
 
-def _walk_tree(folder: Path, root: Path) -> list[dict]:
+# P0-C 修复：添加 max_depth 参数防止深层目录引发 RecursionError
+def _walk_tree(folder: Path, root: Path, max_depth: int = 20, _current_depth: int = 0) -> list[dict]:
+    """递归遍历目录树。
+
+    Args:
+        folder: 要遍历的目录。
+        root: 项目根目录（用于计算相对路径）。
+        max_depth: 最大递归深度，超过后截断并标记 truncated=True，默认 20。
+        _current_depth: 当前深度（内部递归使用）。
+    """
     items = []
     for child in sorted(folder.iterdir()):
         rel = str(child.relative_to(root)).replace("\\", "/")
         if child.is_dir():
-            items.append({"name": child.name, "type": "dir", "path": rel, "children": _walk_tree(child, root)})
+            if _current_depth >= max_depth:
+                # 已达最大深度，截断子目录，标记 truncated
+                items.append({
+                    "name": child.name,
+                    "type": "dir",
+                    "path": rel,
+                    "children": [],
+                    "truncated": True,
+                })
+            else:
+                items.append({
+                    "name": child.name,
+                    "type": "dir",
+                    "path": rel,
+                    "children": _walk_tree(child, root, max_depth=max_depth, _current_depth=_current_depth + 1),
+                })
         else:
             items.append({"name": child.name, "type": "file", "path": rel, "size": child.stat().st_size})
     return items

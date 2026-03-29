@@ -6,13 +6,13 @@ Watchdog 文件变更监听器 + SSE 推送
 """
 
 import asyncio
+import contextlib
 import json
 import time
 from pathlib import Path
-from typing import AsyncGenerator
 
+from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent
 
 
 class _WebnovelFileHandler(FileSystemEventHandler):
@@ -40,6 +40,9 @@ class _WebnovelFileHandler(FileSystemEventHandler):
 class FileWatcher:
     """管理 watchdog Observer 和 SSE 客户端订阅。"""
 
+    # P1-C 修复：默认最大 SSE 客户端数限制，防止无限订阅导致内存耗尽
+    DEFAULT_MAX_SSE_CLIENTS = 50
+
     def __init__(self):
         self._observer: Observer | None = None
         self._subscribers: list[asyncio.Queue] = []
@@ -47,16 +50,22 @@ class FileWatcher:
 
     # --- 订阅管理 ---
 
-    def subscribe(self) -> asyncio.Queue:
+    @property
+    def subscriber_count(self) -> int:
+        """P1-C 修复：返回当前活跌的 SSE 订阅数。"""
+        return len(self._subscribers)
+
+    def subscribe(self, max_clients: int = DEFAULT_MAX_SSE_CLIENTS) -> asyncio.Queue | None:
+        """P1-C 修复：订阅 SSE 队列。若当前连接数已达 max_clients 上限，返回 None。"""
+        if len(self._subscribers) >= max_clients:
+            return None
         q: asyncio.Queue = asyncio.Queue(maxsize=64)
         self._subscribers.append(q)
         return q
 
     def unsubscribe(self, q: asyncio.Queue):
-        try:
+        with contextlib.suppress(ValueError):
             self._subscribers.remove(q)
-        except ValueError:
-            pass
 
     # --- 推送 ---
 

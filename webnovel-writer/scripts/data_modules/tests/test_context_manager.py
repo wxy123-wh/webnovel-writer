@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 ContextManager and SnapshotManager tests
 """
@@ -10,15 +9,15 @@ import logging
 import pytest
 
 from data_modules.config import DataModulesConfig
+from data_modules.context_manager import ContextManager
 from data_modules.index_manager import (
-    IndexManager,
-    EntityMeta,
     ChapterReadingPowerMeta,
+    EntityMeta,
+    IndexManager,
     ReviewMetrics,
 )
-from data_modules.context_manager import ContextManager
-from data_modules.snapshot_manager import SnapshotManager, SnapshotVersionMismatch
 from data_modules.query_router import QueryRouter
+from data_modules.snapshot_manager import SnapshotManager, SnapshotVersionMismatch
 
 
 @pytest.fixture
@@ -232,7 +231,7 @@ def test_context_manager_includes_reader_signal_and_genre_profile(temp_project):
 
 
 def test_context_manager_genre_section_and_refs_extraction(temp_project):
-    refs_dir = temp_project.project_root / ".claude" / "references"
+    refs_dir = temp_project.project_root / ".codex" / "references"
     refs_dir.mkdir(parents=True, exist_ok=True)
 
     (refs_dir / "genre-profiles.md").write_text(
@@ -340,7 +339,7 @@ def test_context_manager_includes_writing_guidance(temp_project):
 
 
 def test_context_manager_dynamic_weights_and_composite_genre(temp_project):
-    refs_dir = temp_project.project_root / ".claude" / "references"
+    refs_dir = temp_project.project_root / ".codex" / "references"
     refs_dir.mkdir(parents=True, exist_ok=True)
     (refs_dir / "genre-profiles.md").write_text(
         """
@@ -391,7 +390,7 @@ def test_context_manager_dynamic_weights_and_composite_genre(temp_project):
 
 
 def test_context_manager_genre_alias_guidance_and_heading_extraction(temp_project):
-    refs_dir = temp_project.project_root / ".claude" / "references"
+    refs_dir = temp_project.project_root / ".codex" / "references"
     refs_dir.mkdir(parents=True, exist_ok=True)
     (refs_dir / "genre-profiles.md").write_text(
         """
@@ -434,7 +433,7 @@ def test_context_manager_genre_alias_guidance_and_heading_extraction(temp_projec
 
 
 def test_context_manager_genre_aliases_normalized_for_profile_lookup(temp_project):
-    refs_dir = temp_project.project_root / ".claude" / "references"
+    refs_dir = temp_project.project_root / ".codex" / "references"
     refs_dir.mkdir(parents=True, exist_ok=True)
     (refs_dir / "genre-profiles.md").write_text(
         """
@@ -488,7 +487,7 @@ def test_context_manager_genre_aliases_normalized_for_profile_lookup(temp_projec
     assert "直播文" in (profile.get("genres") or [])
 
 
-def test_context_manager_prefers_codex_references_over_claude(temp_project):
+def test_context_manager_loads_codex_references_only(temp_project):
     codex_refs = temp_project.project_root / ".codex" / "references"
     codex_refs.mkdir(parents=True, exist_ok=True)
     (codex_refs / "genre-profiles.md").write_text(
@@ -502,23 +501,6 @@ def test_context_manager_prefers_codex_references_over_claude(temp_project):
         """
 ## xuanhuan
 - codex 钩子
-""".strip(),
-        encoding="utf-8",
-    )
-
-    claude_refs = temp_project.project_root / ".claude" / "references"
-    claude_refs.mkdir(parents=True, exist_ok=True)
-    (claude_refs / "genre-profiles.md").write_text(
-        """
-## xuanhuan
-- 来自 claude
-""".strip(),
-        encoding="utf-8",
-    )
-    (claude_refs / "reading-power-taxonomy.md").write_text(
-        """
-## xuanhuan
-- claude 钩子
 """.strip(),
         encoding="utf-8",
     )

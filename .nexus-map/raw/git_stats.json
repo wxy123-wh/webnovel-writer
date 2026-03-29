@@ -1,0 +1,231 @@
+{
+  "analysis_period_days": 90,
+  "stats": {
+    "total_commits": 140,
+    "total_authors": 4
+  },
+  "hotspots": [
+    {
+      "path": "README.md",
+      "changes": 48,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/skills/webnovel-write/SKILL.md",
+      "changes": 25,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/scripts/data_modules/state_manager.py",
+      "changes": 20,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/agents/context-agent.md",
+      "changes": 19,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/scripts/data_modules/index_manager.py",
+      "changes": 19,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/scripts/data_modules/context_manager.py",
+      "changes": 18,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/skills/webnovel-init/SKILL.md",
+      "changes": 18,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/scripts/data_modules/config.py",
+      "changes": 16,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/scripts/data_modules/tests/test_context_manager.py",
+      "changes": 16,
+      "risk": "high"
+    },
+    {
+      "path": ".claude/skills/webnovel-plan/SKILL.md",
+      "changes": 14,
+      "risk": "medium"
+    },
+    {
+      "path": ".claude/agents/data-agent.md",
+      "changes": 13,
+      "risk": "medium"
+    },
+    {
+      "path": ".claude/scripts/extract_chapter_context.py",
+      "changes": 13,
+      "risk": "medium"
+    },
+    {
+      "path": ".claude/skills/webnovel-write/references/polish-guide.md",
+      "changes": 13,
+      "risk": "medium"
+    },
+    {
+      "path": "CLAUDE.md",
+      "changes": 11,
+      "risk": "medium"
+    },
+    {
+      "path": ".claude/scripts/data_modules/rag_adapter.py",
+      "changes": 11,
+      "risk": "medium"
+    },
+    {
+      "path": ".claude/scripts/init_project.py",
+      "changes": 11,
+      "risk": "medium"
+    },
+    {
+      "path": ".claude/scripts/workflow_manager.py",
+      "changes": 11,
+      "risk": "medium"
+    },
+    {
+      "path": ".claude/skills/webnovel-review/SKILL.md",
+      "changes": 10,
+      "risk": "medium"
+    },
+    {
+      "path": ".claude/agents/high-point-checker.md",
+      "changes": 10,
+      "risk": "medium"
+    },
+    {
+      "path": ".gitignore",
+      "changes": 9,
+      "risk": "medium"
+    }
+  ],
+  "coupling_pairs": [
+    {
+      "file_a": ".claude/agents/context-agent.md",
+      "file_b": ".claude/skills/webnovel-write/SKILL.md",
+      "co_changes": 15,
+      "coupling_score": 0.789
+    },
+    {
+      "file_a": ".claude/scripts/data_modules/context_manager.py",
+      "file_b": ".claude/scripts/data_modules/tests/test_context_manager.py",
+      "co_changes": 14,
+      "coupling_score": 0.875
+    },
+    {
+      "file_a": ".claude/skills/webnovel-init/SKILL.md",
+      "file_b": ".claude/skills/webnovel-plan/SKILL.md",
+      "co_changes": 11,
+      "coupling_score": 0.786
+    },
+    {
+      "file_a": ".claude/scripts/data_modules/index_manager.py",
+      "file_b": ".claude/scripts/data_modules/state_manager.py",
+      "co_changes": 10,
+      "coupling_score": 0.526
+    },
+    {
+      "file_a": ".claude/skills/webnovel-init/SKILL.md",
+      "file_b": ".claude/skills/webnovel-write/SKILL.md",
+      "co_changes": 10,
+      "coupling_score": 0.556
+    },
+    {
+      "file_a": ".claude/skills/webnovel-plan/SKILL.md",
+      "file_b": ".claude/skills/webnovel-write/SKILL.md",
+      "co_changes": 10,
+      "coupling_score": 0.714
+    },
+    {
+      "file_a": ".claude/skills/webnovel-write/SKILL.md",
+      "file_b": ".claude/skills/webnovel-write/references/polish-guide.md",
+      "co_changes": 10,
+      "coupling_score": 0.769
+    },
+    {
+      "file_a": ".claude/agents/context-agent.md",
+      "file_b": ".claude/agents/data-agent.md",
+      "co_changes": 9,
+      "coupling_score": 0.692
+    },
+    {
+      "file_a": ".claude/scripts/data_modules/config.py",
+      "file_b": ".claude/scripts/data_modules/context_manager.py",
+      "co_changes": 9,
+      "coupling_score": 0.562
+    },
+    {
+      "file_a": ".claude/skills/webnovel-review/SKILL.md",
+      "file_b": ".claude/skills/webnovel-write/SKILL.md",
+      "co_changes": 9,
+      "coupling_score": 0.9
+    },
+    {
+      "file_a": ".claude/agents/context-agent.md",
+      "file_b": "README.md",
+      "co_changes": 9,
+      "coupling_score": 0.474
+    },
+    {
+      "file_a": ".gitignore",
+      "file_b": "README.md",
+      "co_changes": 8,
+      "coupling_score": 0.889
+    },
+    {
+      "file_a": ".claude/agents/data-agent.md",
+      "file_b": ".claude/scripts/data_modules/state_manager.py",
+      "co_changes": 8,
+      "coupling_score": 0.615
+    },
+    {
+      "file_a": ".claude/agents/data-agent.md",
+      "file_b": ".claude/skills/webnovel-write/SKILL.md",
+      "co_changes": 8,
+      "coupling_score": 0.615
+    },
+    {
+      "file_a": ".claude/scripts/data_modules/index_manager.py",
+      "file_b": ".claude/scripts/data_modules/sql_state_manager.py",
+      "co_changes": 8,
+      "coupling_score": 0.889
+    },
+    {
+      "file_a": ".claude/scripts/data_modules/config.py",
+      "file_b": ".claude/scripts/data_modules/tests/test_context_manager.py",
+      "co_changes": 8,
+      "coupling_score": 0.5
+    },
+    {
+      "file_a": ".claude/scripts/data_modules/tests/test_extract_chapter_context.py",
+      "file_b": ".claude/scripts/extract_chapter_context.py",
+      "co_changes": 8,
+      "coupling_score": 1.0
+    },
+    {
+      "file_a": ".claude/scripts/data_modules/tests/test_context_manager.py",
+      "file_b": "README.md",
+      "co_changes": 8,
+      "coupling_score": 0.5
+    },
+    {
+      "file_a": ".claude/skills/webnovel-write/SKILL.md",
+      "file_b": "README.md",
+      "co_changes": 8,
+      "coupling_score": 0.32
+    },
+    {
+      "file_a": ".claude/scripts/data_modules/context_manager.py",
+      "file_b": "README.md",
+      "co_changes": 8,
+      "coupling_score": 0.444
+    }
+  ]
+}

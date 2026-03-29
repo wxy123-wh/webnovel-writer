@@ -70,7 +70,7 @@ model: inherit
 - `${SCRIPTS_DIR}/webnovel.py`
 
 ```bash
-export SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT is required}/scripts"
+export SCRIPTS_DIR="${CODEX_PLUGIN_ROOT:?CODEX_PLUGIN_ROOT is required}/scripts"
 python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" preflight
 python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" where
 ```

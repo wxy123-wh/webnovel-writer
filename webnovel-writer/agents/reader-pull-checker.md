@@ -11,8 +11,8 @@ model: inherit
 
 ## 核心参考
 
-- **分类法**: `${CLAUDE_PLUGIN_ROOT}/references/reading-power-taxonomy.md`
-- **题材画像**: `${CLAUDE_PLUGIN_ROOT}/references/genre-profiles.md`
+- **分类法**: `${CODEX_PLUGIN_ROOT}/references/reading-power-taxonomy.md`
+- **题材画像**: `${CODEX_PLUGIN_ROOT}/references/genre-profiles.md`
 - **章节追读力数据**: `index.db → chapter_reading_power`
 - **上章钩子**: `state.json → chapter_meta` 或 `index.db`
 

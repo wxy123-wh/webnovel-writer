@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Data Modules - 配置文件
 
@@ -9,9 +8,8 @@ API 配置通过环境变量读取（支持 .env 文件）：
 """
 
 import os
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
 
 from runtime_compat import normalize_windows_path
 
@@ -30,17 +28,14 @@ def _iter_user_home_candidates() -> list[Path]:
     for key in (
         "WEBNOVEL_HOME",
         "WEBNOVEL_CODEX_HOME",
-        "WEBNOVEL_CLAUDE_HOME",
         "CODEX_HOME",
-        "CLAUDE_HOME",
     ):
         raw = os.environ.get(key)
         if raw:
             homes.append(_normalize_home(raw))
 
-    # 默认优先 Codex，再兼容 Claude
+    # 默认使用 Codex 运行时目录
     homes.append((Path.home() / ".codex").resolve())
-    homes.append((Path.home() / ".claude").resolve())
 
     deduped: list[Path] = []
     seen: set[str] = set()
@@ -57,7 +52,7 @@ def _load_dotenv_file(env_path: Path, *, override: bool = False) -> bool:
     if not env_path.exists():
         return False
     try:
-        with open(env_path, "r", encoding="utf-8") as f:
+        with open(env_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
@@ -80,7 +75,7 @@ def _load_dotenv():
 
     约定：
     - 项目级 `.env`（当前工作目录下）优先；
-    - 全局 `.env` 作为兜底：`~/.codex/webnovel-writer/.env`（兼容 `~/.claude/...`）
+    - 全局 `.env` 作为兜底：`~/.codex/webnovel-writer/.env`
     """
     # 1) 当前目录（常见：用户从项目根目录执行）
     _load_dotenv_file(Path.cwd() / ".env", override=False)
@@ -359,10 +354,10 @@ class DataModulesConfig:
         return cls(project_root=root)
 
 
-_default_config: Optional[DataModulesConfig] = None
+_default_config: DataModulesConfig | None = None
 
 
-def get_config(project_root: Optional[Path] = None) -> DataModulesConfig:
+def get_config(project_root: Path | None = None) -> DataModulesConfig:
     global _default_config
     if project_root is not None:
         return DataModulesConfig.from_project_root(project_root)
@@ -370,7 +365,7 @@ def get_config(project_root: Optional[Path] = None) -> DataModulesConfig:
         # 默认不要盲目以 CWD 作为 project_root（很容易写到错误目录）。
         # 使用统一的 project_locator 自动探测：
         # - 支持 WEBNOVEL_PROJECT_ROOT
-        # - 支持 `.codex/.webnovel-current-project` / `.claude/...` 指针文件
+        # - 支持 `.codex/.webnovel-current-project` 指针文件
         # - 支持从当前目录/父目录寻找 `.webnovel/state.json`
         from project_locator import resolve_project_root
 

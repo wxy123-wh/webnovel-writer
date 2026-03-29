@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import json
 import sqlite3
@@ -319,6 +318,10 @@ def test_preflight_json_includes_binding_details(monkeypatch, tmp_path, capsys):
 def test_where_fails_with_clear_reason_when_state_json_missing(monkeypatch, tmp_path, capsys):
     module = _load_webnovel_module()
 
+    # Clear env vars that previous tests may have set (e.g. CODEX_HOME pointing to a valid registry)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("WEBNOVEL_PROJECT_ROOT", raising=False)
+
     invalid_root = tmp_path / "workspace"
     (invalid_root / ".webnovel").mkdir(parents=True, exist_ok=True)
 
@@ -375,8 +378,8 @@ def test_quality_trend_report_writes_to_book_root_when_input_is_workspace_root(t
     workspace_root = (tmp_path / "workspace").resolve()
     book_root = (workspace_root / "凡人资本论").resolve()
 
-    (workspace_root / ".claude").mkdir(parents=True, exist_ok=True)
-    (workspace_root / ".claude" / ".webnovel-current-project").write_text(str(book_root), encoding="utf-8")
+    (workspace_root / ".codex").mkdir(parents=True, exist_ok=True)
+    (workspace_root / ".codex" / ".webnovel-current-project").write_text(str(book_root), encoding="utf-8")
 
     (book_root / ".webnovel").mkdir(parents=True, exist_ok=True)
     (book_root / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")
@@ -630,3 +633,83 @@ def test_consistency_check_reports_drift_with_suggestions(monkeypatch, tmp_path,
     assert payload["status"] == "drift"
     assert "INDEX_SYNC_STALE" in issue_codes
     assert "INDEX_DATA_BEHIND" in issue_codes
+
+
+def test_codex_rag_verify_passthrough_injects_project_root(monkeypatch, tmp_path):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    project_root.mkdir(parents=True, exist_ok=True)
+    captured = {}
+
+    def _fake_resolve(explicit_project_root=None):
+        return project_root
+
+    def _fake_run_data_module(module_name, argv):
+        captured["module_name"] = module_name
+        captured["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(module, "_resolve_root", _fake_resolve)
+    monkeypatch.setattr(module, "_run_data_module", _fake_run_data_module)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "codex",
+            "rag",
+            "verify",
+            "--report",
+            "json",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    assert int(exc.value.code or 0) == 0
+    assert captured["module_name"] == "codex_cli"
+    assert captured["argv"] == ["rag", "verify", "--report", "json", "--project-root", str(project_root)]
+
+
+def test_codex_session_stop_passthrough_does_not_inject_project_root(monkeypatch, tmp_path):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    project_root.mkdir(parents=True, exist_ok=True)
+    captured = {}
+
+    def _fake_resolve(explicit_project_root=None):
+        return project_root
+
+    def _fake_run_data_module(module_name, argv):
+        captured["module_name"] = module_name
+        captured["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(module, "_resolve_root", _fake_resolve)
+    monkeypatch.setattr(module, "_run_data_module", _fake_run_data_module)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "webnovel",
+            "--project-root",
+            str(project_root),
+            "codex",
+            "session",
+            "stop",
+            "--session-id",
+            "session-123",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.main()
+
+    assert int(exc.value.code or 0) == 0
+    assert captured["module_name"] == "codex_cli"
+    assert captured["argv"] == ["session", "stop", "--session-id", "session-123"]

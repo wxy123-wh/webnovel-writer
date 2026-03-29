@@ -104,3 +104,77 @@ test('outlines api exposes structured api error metadata', async () => {
         restoreGlobals()
     }
 })
+
+test('outlines api auto-resolves project_root from /api/project/root and caches it', async () => {
+    installWindowStub()
+
+    const calls = []
+    globalThis.fetch = async input => {
+        const url = new URL(input.toString())
+        calls.push(url)
+
+        if (url.pathname === '/api/project/root') {
+            return new Response(
+                JSON.stringify({
+                    status: 'ok',
+                    project_root: 'D:/code/webnovel-project',
+                }),
+                {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                },
+            )
+        }
+
+        if (url.pathname === '/api/outlines') {
+            return new Response(
+                JSON.stringify({
+                    status: 'ok',
+                    total_outline: '总纲',
+                    detailed_outline: '细纲',
+                    splits: [],
+                }),
+                {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                },
+            )
+        }
+
+        if (url.pathname === '/api/outlines/splits') {
+            return new Response(
+                JSON.stringify({
+                    status: 'ok',
+                    items: [],
+                    total: 0,
+                }),
+                {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                },
+            )
+        }
+
+        return new Response('unexpected request', { status: 500 })
+    }
+
+    const module = await loadOutlinesModule()
+
+    try {
+        module.__resetOutlineProjectRootCacheForTests()
+
+        await module.fetchOutlineBundle()
+        await module.fetchOutlineSplitHistory({ limit: 20, offset: 0 })
+
+        assert.equal(calls[0].pathname, '/api/project/root')
+        assert.equal(calls[1].pathname, '/api/outlines')
+        assert.equal(calls[1].searchParams.get('workspace_id'), 'workspace-default')
+        assert.equal(calls[1].searchParams.get('project_root'), 'D:/code/webnovel-project')
+        assert.equal(calls[2].pathname, '/api/outlines/splits')
+        assert.equal(calls[2].searchParams.get('project_root'), 'D:/code/webnovel-project')
+        assert.equal(calls.filter(url => url.pathname === '/api/project/root').length, 1)
+        assert.equal(window.__WEBNOVEL_PROJECT_ROOT, 'D:/code/webnovel-project')
+    } finally {
+        restoreGlobals()
+    }
+})

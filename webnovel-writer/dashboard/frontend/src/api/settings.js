@@ -57,7 +57,6 @@ const INITIAL_MOCK_DICTIONARY = [
 
 const mockState = {
     dictionary: INITIAL_MOCK_DICTIONARY.map(item => ({ ...item })),
-    hasExtracted: false,
 }
 
 function resolveProjectRoot(explicitProjectRoot) {
@@ -174,25 +173,6 @@ function normalizeDictionaryItem(item) {
     }
 }
 
-function flattenFilePaths(nodes) {
-    const files = []
-    const stack = Array.isArray(nodes) ? [...nodes] : []
-    while (stack.length > 0) {
-        const node = stack.pop()
-        if (!node) continue
-        if (node.type === 'file') {
-            files.push(node.path)
-            continue
-        }
-        if (Array.isArray(node.children)) {
-            for (let index = node.children.length - 1; index >= 0; index -= 1) {
-                stack.push(node.children[index])
-            }
-        }
-    }
-    return files
-}
-
 function listMockDictionary({ term, type, status, limit = 100, offset = 0 } = {}) {
     let items = mockState.dictionary.map(normalizeDictionaryItem)
     if (term) {
@@ -227,6 +207,10 @@ export function getConflictIdFromEntry(entry) {
     }
     return ''
 }
+
+// M1 阶段：仅保留只读查询函数
+// 写操作（writeSettingsFile、extractSettingDictionary、resolveDictionaryConflict）已删除
+// 这些操作已移至 CLI 命令 `webnovel codex`
 
 export async function fetchSettingsFileTree(options = {}) {
     const workspace = buildWorkspace(options)
@@ -291,41 +275,6 @@ export async function readSettingsFile(options = {}) {
     }
 }
 
-export async function extractSettingDictionary(options = {}) {
-    const workspace = buildWorkspace(options)
-    const incremental = options.incremental !== false
-    try {
-        const payload = await requestJSON('/api/settings/dictionary/extract', {
-            method: 'POST',
-            body: {
-                workspace,
-                incremental,
-            },
-            signal: options.signal,
-        })
-        return {
-            status: payload?.status || 'ok',
-            extracted: Number.isFinite(payload?.extracted) ? payload.extracted : 0,
-            conflicts: Number.isFinite(payload?.conflicts) ? payload.conflicts : 0,
-            isMock: false,
-        }
-    } catch (error) {
-        if (!shouldUseMockFallback()) {
-            throw error
-        }
-        const files = flattenFilePaths(MOCK_FILE_TREE)
-        const extracted = mockState.hasExtracted ? 0 : files.length
-        mockState.hasExtracted = true
-        return {
-            status: 'mock',
-            extracted,
-            conflicts: mockState.dictionary.filter(item => item.status === 'conflict').length,
-            isMock: true,
-            error,
-        }
-    }
-}
-
 export async function listSettingDictionary(options = {}) {
     const workspace = buildWorkspace(options)
     const query = {
@@ -358,61 +307,6 @@ export async function listSettingDictionary(options = {}) {
             status: 'mock',
             items: fallback.items,
             total: fallback.total,
-            isMock: true,
-            error,
-        }
-    }
-}
-
-export async function resolveDictionaryConflict(options = {}) {
-    const workspace = buildWorkspace(options)
-    const conflictId = typeof options.id === 'string' ? options.id.trim() : ''
-    if (!conflictId) {
-        const error = new Error('conflict id is required')
-        error.errorCode = 'conflict_id_required'
-        throw error
-    }
-    const body = {
-        workspace,
-        decision: options.decision || 'confirm',
-        attrs: options.attrs && typeof options.attrs === 'object' ? options.attrs : {},
-    }
-    try {
-        const payload = await requestJSON(`/api/settings/dictionary/conflicts/${encodeURIComponent(conflictId)}/resolve`, {
-            method: 'POST',
-            body,
-            signal: options.signal,
-        })
-        return {
-            status: payload?.status || 'ok',
-            conflict: payload?.conflict || null,
-            isMock: false,
-        }
-    } catch (error) {
-        if (!shouldUseMockFallback()) {
-            throw error
-        }
-        const target = mockState.dictionary.find(item => item.id === conflictId || item.conflict_id === conflictId)
-        if (target) {
-            if (body.decision === 'confirm') {
-                target.status = 'confirmed'
-            } else if (body.decision === 'reject') {
-                target.status = 'rejected'
-            } else {
-                target.status = 'conflict'
-            }
-        }
-        return {
-            status: 'mock',
-            conflict: target
-                ? {
-                    id: target.conflict_id || target.id,
-                    term: target.term,
-                    type: target.type,
-                    candidates: [normalizeDictionaryItem(target)],
-                    status: body.decision === 'confirm' ? 'resolved' : target.status,
-                }
-                : null,
             isMock: true,
             error,
         }

@@ -9,7 +9,7 @@ model: inherit
 
 > **职责**: 叙事流守卫者，确保场景过渡顺畅、情节线连贯、逻辑一致。
 
-> **输出格式**: 遵循 `${CLAUDE_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
+> **输出格式**: 遵循 `${CODEX_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
 
 ## 检查范围
 

@@ -12,10 +12,10 @@ model: inherit
 
 ## 核心参考
 
-- **Taxonomy**: `${CLAUDE_PLUGIN_ROOT}/references/reading-power-taxonomy.md`
-- **Genre Profile**: `${CLAUDE_PLUGIN_ROOT}/references/genre-profiles.md`
-- **Context Contract**: `${CLAUDE_PLUGIN_ROOT}/skills/webnovel-write/references/step-1.5-contract.md`
-- **Shared References**: `${CLAUDE_PLUGIN_ROOT}/references/shared/` 为单一事实源；如需枚举/扫描参考文件，遇到 `<!-- DEPRECATED:` 的文件一律跳过。
+- **Taxonomy**: `${CODEX_PLUGIN_ROOT}/references/reading-power-taxonomy.md`
+- **Genre Profile**: `${CODEX_PLUGIN_ROOT}/references/genre-profiles.md`
+- **Context Contract**: `${CODEX_PLUGIN_ROOT}/skills/webnovel-write/references/step-1.5-contract.md`
+- **Shared References**: `${CODEX_PLUGIN_ROOT}/references/shared/` 为单一事实源；如需枚举/扫描参考文件，遇到 `<!-- DEPRECATED:` 的文件一律跳过。
 
 ## 输入
 
@@ -106,12 +106,12 @@ model: inherit
 - `${SCRIPTS_DIR}/webnovel.py`
 
 ```bash
-# 仅使用 CLAUDE_PLUGIN_ROOT，避免多路径探测带来的误判
-if [ -z "${CLAUDE_PLUGIN_ROOT}" ] || [ ! -d "${CLAUDE_PLUGIN_ROOT}/scripts" ]; then
-  echo "ERROR: 未设置 CLAUDE_PLUGIN_ROOT 或缺少目录: ${CLAUDE_PLUGIN_ROOT}/scripts" >&2
+# 仅使用 CODEX_PLUGIN_ROOT，避免多路径探测带来的误判
+if [ -z "${CODEX_PLUGIN_ROOT}" ] || [ ! -d "${CODEX_PLUGIN_ROOT}/scripts" ]; then
+  echo "ERROR: 未设置 CODEX_PLUGIN_ROOT 或缺少目录: ${CODEX_PLUGIN_ROOT}/scripts" >&2
   exit 1
 fi
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
+SCRIPTS_DIR="${CODEX_PLUGIN_ROOT}/scripts"
 
 # 建议先确认解析出的 project_root，避免写到错误目录
 python "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" where

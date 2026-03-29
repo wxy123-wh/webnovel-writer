@@ -1,0 +1,17 @@
+profile: apocalypse
+version: "1.0"
+description: "末世生存题材写作辅助"
+rules_file: rules.md
+
+checkers:
+  pacing:
+    weight: 1.2
+    thresholds:
+      stagnation: 3
+  coolpoint:
+    weight: 1.3
+    min_per_chapter: 1
+  consistency:
+    weight: 1.1
+  hook:
+    weight: 1.4

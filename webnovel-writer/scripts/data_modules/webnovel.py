@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 webnovel 统一入口（面向 skills / agents / Codex 的稳定 CLI）
 
@@ -31,9 +30,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-from runtime_compat import normalize_windows_path
 from project_locator import (
     CURRENT_PROJECT_POINTER_FILE,
     POINTER_DIR_NAMES,
@@ -44,7 +41,7 @@ from project_locator import (
     update_global_registry_current_project,
     write_current_project_pointer,
 )
-
+from runtime_compat import normalize_windows_path
 
 USE_EXIT_OK = 0
 USE_EXIT_INVALID_PROJECT_ROOT = 2
@@ -62,6 +59,7 @@ CONSISTENCY_META_KEYS = {
     "sync_version",
 }
 PASSTHROUGH_TOOLS = {
+    "codex",
     "index",
     "state",
     "rag",
@@ -90,7 +88,7 @@ def _is_project_root(path: Path) -> bool:
     return (path / ".webnovel" / "state.json").is_file()
 
 
-def _find_workspace_root_with_context_dir(start: Path) -> Optional[Path]:
+def _find_workspace_root_with_context_dir(start: Path) -> Path | None:
     for candidate in (start, *start.parents):
         for dirname in POINTER_DIR_NAMES:
             if (candidate / dirname).is_dir():
@@ -98,7 +96,7 @@ def _find_workspace_root_with_context_dir(start: Path) -> Optional[Path]:
     return None
 
 
-def _first_context_dir(workspace_root: Optional[Path]) -> Optional[Path]:
+def _first_context_dir(workspace_root: Path | None) -> Path | None:
     if workspace_root is None:
         return None
     for dirname in POINTER_DIR_NAMES:
@@ -110,9 +108,9 @@ def _first_context_dir(workspace_root: Optional[Path]) -> Optional[Path]:
 
 def _resolve_workspace_root_for_binding(
     *,
-    project_root: Optional[Path],
-    explicit_workspace_root: Optional[Path],
-) -> Optional[Path]:
+    project_root: Path | None,
+    explicit_workspace_root: Path | None,
+) -> Path | None:
     if explicit_workspace_root is not None:
         return _normalize_path(explicit_workspace_root)
 
@@ -135,7 +133,7 @@ def _path_eq(a: Path, b: Path) -> bool:
     return _normcase_path_key(a) == _normcase_path_key(b)
 
 
-def _pointer_skip_detail(*, reason: str, workspace_root: Optional[Path]) -> tuple[str, str]:
+def _pointer_skip_detail(*, reason: str, workspace_root: Path | None) -> tuple[str, str]:
     if reason == "context_dir_missing":
         if workspace_root is None:
             return reason, "create <workspace>/.codex and rerun `webnovel use ... --workspace-root <workspace>`"
@@ -147,7 +145,7 @@ def _pointer_skip_detail(*, reason: str, workspace_root: Optional[Path]) -> tupl
     return reason, "rerun `webnovel use` after fixing workspace context"
 
 
-def _inspect_pointer_state(project_root: Optional[Path], workspace_root: Optional[Path]) -> dict[str, object]:
+def _inspect_pointer_state(project_root: Path | None, workspace_root: Path | None) -> dict[str, object]:
     result: dict[str, object] = {
         "ok": False,
         "status": "skipped",
@@ -220,7 +218,7 @@ def _inspect_pointer_state(project_root: Optional[Path], workspace_root: Optiona
     return result
 
 
-def _inspect_registry_state(project_root: Optional[Path], workspace_root: Optional[Path]) -> dict[str, object]:
+def _inspect_registry_state(project_root: Path | None, workspace_root: Path | None) -> dict[str, object]:
     result: dict[str, object] = {
         "ok": False,
         "status": "missing",
@@ -236,7 +234,7 @@ def _inspect_registry_state(project_root: Optional[Path], workspace_root: Option
     if not registry_candidates:
         result["status"] = "error"
         result["reason"] = "registry_path_unavailable"
-        result["suggestion"] = "set CODEX_HOME/CLAUDE_HOME and rerun preflight"
+        result["suggestion"] = "set CODEX_HOME and rerun preflight"
         return result
 
     existing_files = [path for path in registry_candidates if path.is_file()]
@@ -327,7 +325,7 @@ def _scripts_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _resolve_root(explicit_project_root: Optional[str]) -> Path:
+def _resolve_root(explicit_project_root: str | None) -> Path:
     # 允许显式传入工作区根目录或书项目根目录
     raw = explicit_project_root
     if raw:
@@ -339,7 +337,7 @@ def _is_extract_context_root(path: Path) -> bool:
     return any((path / marker).exists() for marker in (".webnovel", "正文", "大纲"))
 
 
-def _resolve_root_for_extract_context(explicit_project_root: Optional[str]) -> Path:
+def _resolve_root_for_extract_context(explicit_project_root: str | None) -> Path:
     """
     extract-context 允许在 state.json 缺失时降级执行，
     由子脚本输出结构化警告而非直接中断。
@@ -836,6 +834,19 @@ def _run_data_module(module: str, argv: list[str]) -> int:
         sys.argv = old_argv
 
 
+def _inject_codex_project_root_args(rest: list[str], project_root: Path) -> list[str]:
+    if not rest:
+        return rest
+
+    if "--project-root" in rest:
+        return rest
+
+    command_head = tuple(rest[:2])
+    if command_head in {("session", "start"), ("index", "status"), ("rag", "verify")}:
+        return [*rest, "--project-root", str(project_root)]
+    return rest
+
+
 def _run_script(script_name: str, argv: list[str]) -> int:
     """
     Run a script under `scripts/` via a subprocess.
@@ -859,7 +870,7 @@ def cmd_where(args: argparse.Namespace) -> int:
     return 0
 
 
-def _build_preflight_report(explicit_project_root: Optional[str]) -> dict:
+def _build_preflight_report(explicit_project_root: str | None) -> dict:
     scripts_dir = _scripts_dir().resolve()
     plugin_root = scripts_dir.parent
     skill_root = plugin_root / "skills" / "webnovel-write"
@@ -875,7 +886,7 @@ def _build_preflight_report(explicit_project_root: Optional[str]) -> dict:
 
     project_root = ""
     project_root_error = ""
-    resolved_root: Optional[Path] = None
+    resolved_root: Path | None = None
     try:
         resolved_root = _resolve_root(explicit_project_root)
         project_root = str(resolved_root)
@@ -892,7 +903,7 @@ def _build_preflight_report(explicit_project_root: Optional[str]) -> dict:
             }
         )
 
-    explicit_hint: Optional[Path] = None
+    explicit_hint: Path | None = None
     if explicit_project_root:
         explicit_hint = _normalize_path(explicit_project_root)
     workspace_root = _resolve_workspace_root_for_binding(
@@ -936,10 +947,7 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     else:
         for item in report["checks"]:
             required = bool(item.get("required", True))
-            if item["ok"]:
-                status = "OK"
-            else:
-                status = "ERROR" if required else "WARN"
+            status = "OK" if item["ok"] else "ERROR" if required else "WARN"
             path = item.get("path") or ""
             status_detail = item.get("status")
             if status_detail:
@@ -968,7 +976,7 @@ def cmd_use(args: argparse.Namespace) -> int:
         )
         return USE_EXIT_INVALID_PROJECT_ROOT
 
-    explicit_workspace_root: Optional[Path] = None
+    explicit_workspace_root: Path | None = None
     if args.workspace_root:
         explicit_workspace_root = _normalize_path(args.workspace_root)
     workspace_root = _resolve_workspace_root_for_binding(
@@ -977,7 +985,7 @@ def cmd_use(args: argparse.Namespace) -> int:
     )
 
     context_dir = _first_context_dir(workspace_root)
-    pointer_file: Optional[Path] = None
+    pointer_file: Path | None = None
     pointer_reason = ""
     pointer_action = ""
     if context_dir is None:
@@ -1019,7 +1027,7 @@ def cmd_use(args: argparse.Namespace) -> int:
 
 
 def cmd_dashboard(args: argparse.Namespace) -> int:
-    """从统一 CLI 启动 Dashboard（适配 Codex/Claude 任意工作目录）。"""
+    """从统一 CLI 启动 Dashboard（适配 Codex 工作目录）。"""
     project_root = _resolve_root(args.project_root)
     plugin_root = _scripts_dir().parent
 
@@ -1053,24 +1061,21 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
 def _parse_migrate_codex_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="webnovel migrate codex",
-        description="迁移历史 .claude 痕迹到 .codex 优先路径",
+        description="迁移历史 legacy 运行时痕迹到 .codex 路径",
     )
     parser.add_argument("--dry-run", action="store_true", help="仅生成迁移报告，不实际改动文件")
     return parser.parse_args(argv)
 
 
-def _resolve_workspace_hint(explicit_project_root: Optional[str]) -> Optional[Path]:
+def _resolve_workspace_hint(explicit_project_root: str | None) -> Path | None:
     if not explicit_project_root:
         return None
     hint = normalize_windows_path(explicit_project_root).expanduser()
-    if not hint.is_absolute():
-        hint = (Path.cwd().resolve() / hint).resolve()
-    else:
-        hint = hint.resolve()
+    hint = (Path.cwd().resolve() / hint).resolve() if not hint.is_absolute() else hint.resolve()
     return hint
 
 
-def _run_codex_migration(*, project_root: Path, dry_run: bool, workspace_hint: Optional[Path]) -> int:
+def _run_codex_migration(*, project_root: Path, dry_run: bool, workspace_hint: Path | None) -> int:
     from migrations.codex_migration import migrate_codex_runtime
 
     report = migrate_codex_runtime(
@@ -1110,6 +1115,9 @@ def main() -> None:
         help="不自动初始化缺失的 .webnovel/index.db",
     )
     p_dashboard.set_defaults(func=cmd_dashboard)
+
+    p_codex = sub.add_parser("codex", help="转发到 codex_cli（会话 / 索引 / RAG）")
+    p_codex.add_argument("args", nargs=argparse.REMAINDER)
 
     p_consistency = sub.add_parser("consistency-check", help="检查 state/index/rag 一致性并给出诊断建议")
     p_consistency.add_argument("--format", choices=["text", "json"], default="text", help="输出格式")
@@ -1201,7 +1209,7 @@ def main() -> None:
             project_root = _resolve_root_for_extract_context(args.project_root)
         except Exception as exc:
             print(f"ERROR project_root (extract-context): {exc}", file=sys.stderr)
-            raise SystemExit(1)
+            raise SystemExit(1) from exc
         return_args = [
             "--project-root",
             str(project_root),
@@ -1218,6 +1226,8 @@ def main() -> None:
 
     if tool == "index":
         raise SystemExit(_run_data_module("index_manager", [*forward_args, *rest]))
+    if tool == "codex":
+        raise SystemExit(_run_data_module("codex_cli", _inject_codex_project_root_args(rest, project_root)))
     if tool == "state":
         raise SystemExit(_run_data_module("state_manager", [*forward_args, *rest]))
     if tool == "rag":

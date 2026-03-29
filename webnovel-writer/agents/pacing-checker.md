@@ -9,7 +9,7 @@ model: inherit
 
 > **职责**: 节奏分析师，执行 Strand Weave 平衡检查，防止读者疲劳。
 
-> **输出格式**: 遵循 `${CLAUDE_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
+> **输出格式**: 遵循 `${CODEX_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
 
 ## 检查范围
 
@@ -40,7 +40,7 @@ model: inherit
 
 **可选: 使用 status_reporter 进行自动化分析**:
 ```bash
-python -X utf8 "${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT is required}/scripts/webnovel.py" --project-root "${PROJECT_ROOT}" status -- --focus strand
+python -X utf8 "${CODEX_PLUGIN_ROOT:?CODEX_PLUGIN_ROOT is required}/scripts/webnovel.py" --project-root "${PROJECT_ROOT}" status -- --focus strand
 ```
 
 ### 第二步: 章节情节线分类

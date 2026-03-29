@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import sys
 from pathlib import Path
@@ -31,7 +30,7 @@ def test_current_project_pointer_rel_prefers_codex():
 
     import project_locator as project_locator_module
 
-    assert project_locator_module.CURRENT_PROJECT_POINTER_REL == Path(".codex") / ".webnovel-current-project"
+    assert Path(".codex") / ".webnovel-current-project" == project_locator_module.CURRENT_PROJECT_POINTER_REL
 
 
 def test_resolve_project_root_stops_at_git_root(tmp_path):
@@ -51,7 +50,7 @@ def test_resolve_project_root_stops_at_git_root(tmp_path):
 
     try:
         resolve_project_root(cwd=nested)
-        assert False, "Expected FileNotFoundError when only parent outside git root has project"
+        raise AssertionError("Expected FileNotFoundError when only parent outside git root has project")
     except FileNotFoundError:
         pass
 
@@ -81,7 +80,7 @@ def test_resolve_project_root_uses_workspace_pointer(tmp_path):
     from project_locator import resolve_project_root, write_current_project_pointer
 
     workspace = tmp_path / "workspace"
-    (workspace / ".claude").mkdir(parents=True, exist_ok=True)
+    (workspace / ".codex").mkdir(parents=True, exist_ok=True)
 
     project_root = workspace / "凡人资本论"
     (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
@@ -102,7 +101,6 @@ def test_write_current_project_pointer_prefers_codex_dir(tmp_path):
 
     workspace = tmp_path / "workspace"
     (workspace / ".codex").mkdir(parents=True, exist_ok=True)
-    (workspace / ".claude").mkdir(parents=True, exist_ok=True)
 
     project_root = workspace / "凡人资本论"
     (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
@@ -120,9 +118,9 @@ def test_resolve_project_root_ignores_stale_pointer_and_fallbacks(tmp_path):
     from project_locator import resolve_project_root
 
     workspace = tmp_path / "workspace"
-    (workspace / ".claude").mkdir(parents=True, exist_ok=True)
+    (workspace / ".codex").mkdir(parents=True, exist_ok=True)
     # stale pointer
-    (workspace / ".claude" / ".webnovel-current-project").write_text(
+    (workspace / ".codex" / ".webnovel-current-project").write_text(
         str(workspace / "missing-project"), encoding="utf-8"
     )
 

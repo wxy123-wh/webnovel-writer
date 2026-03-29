@@ -1,12 +1,12 @@
-﻿const MENU_SURFACE_STYLE = {
+const MENU_SURFACE_STYLE = {
     position: 'fixed',
     minWidth: 220,
     maxWidth: 320,
-    background: '#111827',
-    color: '#f9fafb',
-    border: '1px solid #374151',
+    background: '#fffaf0',
+    color: '#2a220f',
+    border: '2px solid #2a220f',
     borderRadius: 10,
-    boxShadow: '0 16px 40px rgba(0, 0, 0, 0.35)',
+    boxShadow: '6px 6px 0 #2a220f',
     zIndex: 3000,
     padding: 8,
 }
@@ -33,7 +33,7 @@ const ITEM_BASE_STYLE = {
 }
 
 const EMPTY_STYLE = {
-    color: '#9ca3af',
+    color: '#8f7f5c',
     fontSize: 12,
     padding: '8px 10px',
 }

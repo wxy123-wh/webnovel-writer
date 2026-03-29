@@ -1,0 +1,290 @@
+{
+  "$schema": "nexus-mapper/concept-model/v1",
+  "generated_at": "2026-03-26T20:53:02.373233Z",
+  "repo_path": "D:/code/webnovel-writer",
+  "generator": "nexus-mapper v2",
+  "nodes": [
+    {
+      "id": "system-cli-gateway",
+      "type": "System",
+      "label": "CLI Gateway",
+      "responsibility": "Expose unified webnovel commands and dispatch to data modules for project workflows.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/scripts/data_modules/webnovel.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "argparse",
+        "sqlite3"
+      ],
+      "related_reqs": [
+        "PRD-CLI-STD"
+      ],
+      "complexity": "high",
+      "hotspot": true
+    },
+    {
+      "id": "system-dashboard-app",
+      "type": "System",
+      "label": "Dashboard App",
+      "responsibility": "Serve FastAPI read APIs and mount routers for writable operational modules and Codex bridge.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/dashboard/app.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "fastapi"
+      ],
+      "related_reqs": [
+        "PRD-FRONTEND-READONLY"
+      ],
+      "complexity": "high",
+      "hotspot": false
+    },
+    {
+      "id": "system-runtime-management",
+      "type": "System",
+      "label": "Runtime Management",
+      "responsibility": "Resolve workspace and project roots, profile runtime state, and execute codex migration routines.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/dashboard/services/runtime/service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python"
+      ],
+      "related_reqs": [
+        "PRD-CLI-STD"
+      ],
+      "complexity": "medium",
+      "hotspot": false
+    },
+    {
+      "id": "system-skills-management",
+      "type": "System",
+      "label": "Skills Management",
+      "responsibility": "Maintain skill registry lifecycle, enable or disable skills, and record skill audit entries.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/dashboard/services/skills/manager.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "json"
+      ],
+      "related_reqs": [
+        "PRD-SKILL-SESSION"
+      ],
+      "complexity": "medium",
+      "hotspot": false
+    },
+    {
+      "id": "system-settings-dictionary",
+      "type": "System",
+      "label": "Settings Dictionary",
+      "responsibility": "Read or write settings files, extract dictionary entries, and resolve conflict decisions with locking.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/dashboard/services/dictionary/service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "filelock"
+      ],
+      "related_reqs": [
+        "PRD-FRONTEND-READONLY"
+      ],
+      "complexity": "high",
+      "hotspot": false
+    },
+    {
+      "id": "system-outline-split",
+      "type": "System",
+      "label": "Outline Split",
+      "responsibility": "Preview and apply split or resplit for outlines with idempotency, rollback plan, and order validation.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/dashboard/services/split/service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "filelock"
+      ],
+      "related_reqs": [
+        "PRD-INDEX-OUTLINES"
+      ],
+      "complexity": "high",
+      "hotspot": false
+    },
+    {
+      "id": "system-edit-assist",
+      "type": "System",
+      "label": "Edit Assist",
+      "responsibility": "Produce rewrite proposals and guarded apply operations with selection version conflict checks.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/dashboard/services/edit_assist/service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "filelock"
+      ],
+      "related_reqs": [
+        "PRD-FRONTEND-READONLY"
+      ],
+      "complexity": "high",
+      "hotspot": false
+    },
+    {
+      "id": "system-codex-bridge",
+      "type": "System",
+      "label": "Codex Bridge",
+      "responsibility": "Open local Codex dialog flows from dashboard pages by generating temporary prompt payload files.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/dashboard/routers/codex_bridge.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "fastapi"
+      ],
+      "related_reqs": [
+        "PRD-CLI-STD",
+        "PRD-SKILL-SESSION"
+      ],
+      "complexity": "medium",
+      "hotspot": false
+    },
+    {
+      "id": "system-rag-adapter",
+      "type": "System",
+      "label": "RAG Adapter",
+      "responsibility": "Manage vector store schema, indexing, and hybrid retrieval with consistency metadata and diagnostics.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/scripts/data_modules/rag_adapter.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "sqlite3"
+      ],
+      "related_reqs": [
+        "PRD-RAG-VERIFY",
+        "PRD-INDEX-OUTLINES"
+      ],
+      "complexity": "high",
+      "hotspot": false
+    },
+    {
+      "id": "domain-workspace-routing",
+      "type": "Domain",
+      "label": "Workspace Routing",
+      "responsibility": "Keep workspace_id and project_root aligned so API writes or reads stay within authorized roots.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/dashboard/services/runtime/service.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python"
+      ],
+      "related_reqs": [
+        "PRD-CLI-STD"
+      ],
+      "complexity": "medium",
+      "hotspot": false
+    },
+    {
+      "id": "domain-rag-consistency",
+      "type": "Domain",
+      "label": "RAG Consistency",
+      "responsibility": "Track consistency between state, index, and rag watermarks so drift can be diagnosed by CLI checks.",
+      "implementation_status": "implemented",
+      "code_path": "webnovel-writer/scripts/data_modules/webnovel.py",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "python",
+        "sqlite3"
+      ],
+      "related_reqs": [
+        "PRD-RAG-VERIFY"
+      ],
+      "complexity": "medium",
+      "hotspot": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "system-dashboard-app",
+      "target": "system-runtime-management",
+      "type": "depends_on",
+      "description": "app.py mounts runtime router and runtime service flow"
+    },
+    {
+      "source": "system-dashboard-app",
+      "target": "system-skills-management",
+      "type": "depends_on",
+      "description": "app.py mounts skills router and manager routines"
+    },
+    {
+      "source": "system-dashboard-app",
+      "target": "system-settings-dictionary",
+      "type": "depends_on",
+      "description": "app.py mounts settings routers for files and dictionary"
+    },
+    {
+      "source": "system-dashboard-app",
+      "target": "system-outline-split",
+      "type": "depends_on",
+      "description": "app.py mounts outlines router for split and resplit operations"
+    },
+    {
+      "source": "system-dashboard-app",
+      "target": "system-edit-assist",
+      "type": "depends_on",
+      "description": "app.py mounts edit assist router for preview and apply"
+    },
+    {
+      "source": "system-dashboard-app",
+      "target": "system-codex-bridge",
+      "type": "depends_on",
+      "description": "app.py mounts codex bridge router"
+    },
+    {
+      "source": "system-cli-gateway",
+      "target": "system-rag-adapter",
+      "type": "depends_on",
+      "description": "webnovel.py dispatches rag subcommands to rag_adapter"
+    },
+    {
+      "source": "system-cli-gateway",
+      "target": "domain-rag-consistency",
+      "type": "depends_on",
+      "description": "consistency-check compares state, index, and rag meta"
+    },
+    {
+      "source": "system-runtime-management",
+      "target": "domain-workspace-routing",
+      "type": "depends_on",
+      "description": "runtime service resolves workspace and pointer state"
+    },
+    {
+      "source": "system-rag-adapter",
+      "target": "domain-rag-consistency",
+      "type": "depends_on",
+      "description": "rag schema metadata provides watermark and version evidence"
+    }
+  ],
+  "metadata": {
+    "total_files": 149,
+    "total_lines": 45488,
+    "languages": [
+      "javascript",
+      "python"
+    ],
+    "git_commits_analyzed": 140,
+    "analysis_days": 90
+  }
+}

@@ -1,0 +1,93 @@
+name: App Release Gate
+
+on:
+  push:
+    paths:
+      - '.github/workflows/app-release-gate.yml'
+      - 'README.md'
+      - 'docs/**'
+      - 'webnovel-writer/dashboard/**'
+      - 'webnovel-writer/scripts/**'
+  pull_request:
+    paths:
+      - '.github/workflows/app-release-gate.yml'
+      - 'README.md'
+      - 'docs/**'
+      - 'webnovel-writer/dashboard/**'
+      - 'webnovel-writer/scripts/**'
+
+jobs:
+  rag-release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create minimal benchmark fixture project
+        run: |
+          python - <<'PY'
+          import json
+          import sqlite3
+          from pathlib import Path
+
+          root = Path(".ci-fixtures/rag-project")
+          webnovel = root / ".webnovel"
+          codex = webnovel / "codex"
+          codex.mkdir(parents=True, exist_ok=True)
+          (webnovel / "state.json").write_text("{}", encoding="utf-8")
+
+          sqlite3.connect(str(webnovel / "index.db")).close()
+          with sqlite3.connect(str(webnovel / "vectors.db")) as conn:
+              cursor = conn.cursor()
+              cursor.execute(
+                  """
+                  CREATE TABLE IF NOT EXISTS rag_schema_meta (
+                      key TEXT PRIMARY KEY,
+                      value TEXT NOT NULL,
+                      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                  )
+                  """
+              )
+              cursor.execute(
+                  "INSERT OR REPLACE INTO rag_schema_meta (key, value, updated_at) VALUES (?, ?, ?)",
+                  ("schema_version", "2", "2026-03-29T00:00:00"),
+              )
+              conn.commit()
+
+          (codex / "rag-benchmark.json").write_text(
+              json.dumps(
+                  {
+                      "correctness": {
+                          "metrics": {
+                              "hit_at_5": 0.93,
+                              "mrr_at_10": 0.74,
+                              "chapter_constraint_accuracy": 0.99,
+                          }
+                      },
+                      "performance": {
+                          "metrics": {
+                              "p95_latency_ms": 650,
+                              "p99_latency_ms": 1000,
+                              "incremental_index_p95_ms": 1400,
+                              "file_change_to_searchable_p95_ms": 2500,
+                          }
+                      },
+                  },
+                  ensure_ascii=False,
+                  indent=2,
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Run rag verify release gate
+        run: |
+          python -X utf8 webnovel-writer/scripts/webnovel.py \
+            --project-root .ci-fixtures/rag-project \
+            codex rag verify \
+            --report json

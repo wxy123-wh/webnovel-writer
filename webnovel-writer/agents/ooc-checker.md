@@ -9,7 +9,7 @@ model: inherit
 
 > **职责**: 角色完整性守卫者，防止 OOC（Out-Of-Character）违规。
 
-> **输出格式**: 遵循 `${CLAUDE_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
+> **输出格式**: 遵循 `${CODEX_PLUGIN_ROOT}/references/checker-output-schema.md` 统一 JSON Schema
 
 ## 检查范围
 

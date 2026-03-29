@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Workspace skill manager CLI.
 """
@@ -32,7 +31,7 @@ def _bool_arg(raw: str) -> bool:
 
 def _service():
     _ensure_repo_on_path()
-    from dashboard.services.skills import (
+    from data_modules.skills_service import (
         SkillServiceError,
         create_skill,
         delete_skill,
@@ -236,7 +235,7 @@ def main() -> None:
             "details": exc.details,
         }
         _print_json(payload)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     if args.format == "json":
         _print_json(result)

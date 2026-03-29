@@ -11,12 +11,12 @@ purpose: 重定向到权威版本
 
 ## 权威版本位置
 
-`${CLAUDE_PLUGIN_ROOT}/skills/webnovel-query/references/system-data-flow.md`
+`${CODEX_PLUGIN_ROOT}/skills/webnovel-query/references/system-data-flow.md`
 
 ## 加载方式
 
 ```bash
-cat "${CLAUDE_PLUGIN_ROOT}/skills/webnovel-query/references/system-data-flow.md"
+cat "${CODEX_PLUGIN_ROOT}/skills/webnovel-query/references/system-data-flow.md"
 ```
 
 ## 快速参考
