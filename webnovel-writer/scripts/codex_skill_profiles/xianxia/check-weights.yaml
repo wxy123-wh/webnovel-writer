@@ -1,0 +1,35 @@
+profile: xianxia
+version: "1.0"
+description: "修仙/玄幻题材写作辅助"
+rules_file: rules.md
+
+# 基于 genre-profiles.md §2.2 xianxia 配置
+checkers:
+  pacing:
+    weight: 1.0
+    thresholds:
+      stagnation: 4
+      strand_quest_max: 6
+      strand_fire_gap_max: 12
+      transition_max_consecutive: 3
+  coolpoint:
+    weight: 1.0
+    thresholds:
+      combo_interval: 5
+      milestone_interval: 15
+      density_per_chapter: high
+  consistency:
+    weight: 1.1
+  hook:
+    weight: 1.0
+
+# genre-profiles 联动参数
+genre_ref:
+  id: xianxia
+  name: "修仙/玄幻"
+  debt_multiplier: 0.9
+  payback_window_default: 5
+  allowed_override_rationales:
+    - TRANSITIONAL_SETUP
+    - WORLD_RULE_CONSTRAINT
+    - ARC_TIMING

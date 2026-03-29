@@ -1,0 +1,14 @@
+profile: description
+version: "1.0"
+description: "描写场景写作辅助"
+rules_file: rules.md
+
+checkers:
+  pacing:
+    weight: 0.8
+  coolpoint:
+    weight: 0.7
+  consistency:
+    weight: 1.0
+  hook:
+    weight: 0.9

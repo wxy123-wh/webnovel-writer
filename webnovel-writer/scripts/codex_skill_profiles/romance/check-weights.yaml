@@ -1,0 +1,35 @@
+profile: romance
+version: "1.0"
+description: "言情/甜宠题材写作辅助"
+rules_file: rules.md
+
+# 基于 genre-profiles.md §2.3 romance 配置
+checkers:
+  pacing:
+    weight: 1.0
+    thresholds:
+      stagnation: 4
+      strand_quest_max: 4
+      strand_fire_gap_max: 5
+      transition_max_consecutive: 2
+  coolpoint:
+    weight: 1.0
+    thresholds:
+      combo_interval: 6
+      milestone_interval: 12
+      density_per_chapter: medium
+  consistency:
+    weight: 1.0
+  hook:
+    weight: 1.0
+
+# genre-profiles 联动参数
+genre_ref:
+  id: romance
+  name: "言情/甜宠"
+  debt_multiplier: 1.0
+  payback_window_default: 4
+  allowed_override_rationales:
+    - TRANSITIONAL_SETUP
+    - CHARACTER_CREDIBILITY
+    - ARC_TIMING

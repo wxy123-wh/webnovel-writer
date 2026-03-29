@@ -1,0 +1,35 @@
+profile: mystery
+version: "1.0"
+description: "悬疑推理题材写作辅助"
+rules_file: rules.md
+
+# 基于 genre-profiles.md §2.4 mystery 配置
+checkers:
+  pacing:
+    weight: 1.0
+    thresholds:
+      stagnation: 3
+      strand_quest_max: 8
+      strand_fire_gap_max: 20
+      transition_max_consecutive: 2
+  coolpoint:
+    weight: 1.0
+    thresholds:
+      combo_interval: 10
+      milestone_interval: 20
+      density_per_chapter: low
+  consistency:
+    weight: 1.2
+  hook:
+    weight: 1.0
+
+# genre-profiles 联动参数
+genre_ref:
+  id: mystery
+  name: "悬疑/推理"
+  debt_multiplier: 0.8
+  payback_window_default: 5
+  allowed_override_rationales:
+    - LOGIC_INTEGRITY
+    - TRANSITIONAL_SETUP
+    - ARC_TIMING
