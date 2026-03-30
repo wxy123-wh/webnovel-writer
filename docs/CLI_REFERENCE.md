@@ -2,11 +2,43 @@
 
 ## 概述
 
-`webnovel codex` 是 Codex 桌面端与 Webnovel Writer 系统的统一接口。所有写作相关的操作都通过 CLI 命令执行。
+`webnovel agent` 是当前推荐的写作入口，用于直接调用内嵌 LLM API 执行整章 pipeline。`webnovel codex` 继续保留为兼容命令组，用于会话、索引与 RAG 等既有运行时能力。
 
 ## 快速开始
 
-### 1. 启动写作会话
+### 1. 执行 Agent Pipeline
+
+```bash
+webnovel agent run --chapter 1 --profile battle --publish --project-root /path/to/project
+```
+
+**输出示例**：
+```json
+{
+  "status": "ok",
+  "project_root": "/path/to/project",
+  "session_id": "session-abc123def456",
+  "run": {
+    "run_id": "run-ch0001-1234abcd",
+    "chapter_num": 1,
+    "status": "published"
+  }
+}
+```
+
+### 2. 启动 Agent 会话（可选）
+
+```bash
+webnovel agent session start --profile battle --project-root /path/to/project
+```
+
+### 3. 停止 Agent 会话（可选）
+
+```bash
+webnovel agent session stop --session-id session-abc123def456 --project-root /path/to/project
+```
+
+### 4. 启动写作会话（兼容 / 可选）
 
 ```bash
 webnovel codex session start --profile battle --project-root /path/to/project
@@ -27,7 +59,7 @@ webnovel codex session start --profile battle --project-root /path/to/project
 - `--profile` (必需)：Skill profile，可选值见下方"可用 Profiles"章节
 - `--project-root` (可选)：项目根目录，如不指定则自动查找
 
-### 2. 停止写作会话
+### 5. 停止写作会话
 
 ```bash
 webnovel codex session stop --session-id session-abc123def456
@@ -45,7 +77,7 @@ webnovel codex session stop --session-id session-abc123def456
 **参数说明**：
 - `--session-id` (必需)：会话 ID，由 `session start` 返回
 
-### 3. 查询索引状态
+### 6. 查询索引状态
 
 ```bash
 webnovel codex index status --project-root /path/to/project
@@ -69,7 +101,7 @@ webnovel codex index status --project-root /path/to/project
 **参数说明**：
 - `--project-root` (可选)：项目根目录，如不指定则自动查找
 
-### 4. 验证 RAG 当前状态
+### 7. 验证 RAG 当前状态
 
 ```bash
 webnovel codex rag verify --project-root /path/to/project --report json

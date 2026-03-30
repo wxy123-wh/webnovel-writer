@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,11 +12,14 @@ def _pipeline_cli_path() -> Path:
 
 
 def _run_cli(project_root: Path, *args: str) -> dict:
+    env = os.environ.copy()
+    env["GENERATION_API_TYPE"] = "stub"
     result = subprocess.run(
         [sys.executable, str(_pipeline_cli_path()), "--project-root", str(project_root), *args],
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     payload = json.loads(result.stdout)
     payload["_exit_code"] = result.returncode

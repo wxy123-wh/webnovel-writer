@@ -2,13 +2,13 @@
 
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![Runtime](https://img.shields.io/badge/Runtime-Codex-blue.svg)](#)
+[![Runtime](https://img.shields.io/badge/Runtime-Agent-blue.svg)](#)
 
-`Webnovel Writer` 是面向 Codex 的长篇网文创作系统，目标是降低 AI 写作中的"遗忘"和"幻觉"，支持长周期连载创作。
+`Webnovel Writer` 是面向 Agent 的长篇网文创作系统，目标是降低 AI 写作中的"遗忘"和"幻觉"，支持长周期连载创作。
 
 ## 当前产品状态
 
-仓库当前已经收敛出清晰方向，**可支持的商业化形态**已经明确为：**GPL v3 自托管单租户部署 + 有偿支持 / 实施服务**。现阶段产品形态仍然是：**CLI 主导写作、Dashboard 只读观察、索引与 RAG 验证作为质量门禁与交付辅助能力**。
+仓库当前已经收敛出清晰方向，**可支持的商业化形态**已经明确为：**GPL v3 自托管单租户部署 + 有偿支持 / 实施服务**。现阶段产品形态为：**Python Agent 主导写作、CLI 作为稳定入口、索引与 RAG 验证作为质量门禁与交付辅助能力**。
 
 ### M1 阶段：只读化与删接口（已完成）
 - 删除所有写接口（19 个端点）
@@ -46,11 +46,18 @@
 
 ## 快速开始
 
-### CLI 命令（推荐）
+### Agent 命令（推荐）
 
 ```bash
-# 启动写作会话（加载 battle profile Skill）
-python -X utf8 webnovel-writer/scripts/webnovel.py codex session start \
+# 执行整章 agent pipeline（加载 battle profile，并直接发布草稿）
+python -X utf8 webnovel-writer/scripts/webnovel.py agent run \
+  --chapter 1 \
+  --profile battle \
+  --publish \
+  --project-root /path/to/project
+
+# 启动 agent 会话（可选）
+python -X utf8 webnovel-writer/scripts/webnovel.py agent session start \
   --profile battle \
   --project-root /path/to/project
 
@@ -63,14 +70,15 @@ python -X utf8 webnovel-writer/scripts/webnovel.py codex rag verify \
   --project-root /path/to/project \
   --report json
 
-# 停止会话
-python -X utf8 webnovel-writer/scripts/webnovel.py codex session stop \
+# 停止 agent 会话
+python -X utf8 webnovel-writer/scripts/webnovel.py agent session stop \
+  --project-root /path/to/project \
   --session-id session-abc123
 ```
 
 **详见**：`docs/CLI_REFERENCE.md`
 
-### 传统方式（仅用于初始化和查询）
+### 传统方式（初始化和诊断）
 
 #### 1) 安装依赖
 
@@ -115,7 +123,7 @@ python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<PROJECT_ROOT
 python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<PROJECT_ROOT>" dashboard
 ```
 
-## 启动 Dashboard
+## 启动 Dashboard（遗留只读观察面）
 
 ### 本地开发（仅本机访问）
 
@@ -126,7 +134,7 @@ python -m dashboard.server --project-root /path/to/your/novel
 Dashboard 将监听 `127.0.0.1:8765`（默认仅本机可访问）。
 
 > [!NOTE]
-> Dashboard 现已改为纯展示模式（M1 阶段）。所有写操作请使用 CLI 命令。
+> Dashboard 现已改为纯展示模式（M1 阶段），不再承担主写作入口。当前主入口是内嵌 LLM API 的 `webnovel agent`。
 
 ### 局域网访问
 
@@ -194,7 +202,7 @@ python -X utf8 webnovel-writer/scripts/webnovel.py --project-root "<PROJECT_ROOT
 
 ### 1. 如何使用新的 CLI 命令？
 
-详见 `docs/CLI_REFERENCE.md`。所有写作操作现已统一到 `webnovel codex` 命令组。
+详见 `docs/CLI_REFERENCE.md`。当前推荐的写作入口是 `webnovel agent`；`webnovel codex` 作为兼容命令保留。
 
 ### 2. Dashboard 还能写入吗？
 

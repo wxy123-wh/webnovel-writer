@@ -2,24 +2,28 @@
 
 ## 概述
 
-Webnovel Writer 是面向 Codex 的长篇网文创作系统。当前仓库已经形成清晰方向，并已在选定的商业化模型下完成主线落地：
+Webnovel Writer 是面向 Agent 的长篇网文创作系统。当前仓库已经形成清晰方向，并已在选定的商业化模型下完成主线落地：
 
 当前主线支持的商业化形态为：**GPL v3 自托管单租户部署 + 有偿支持 / 实施服务**。当前架构并不把公网多租户托管 SaaS 作为主线承诺。
 
 - **M1 阶段**：删除写接口，Dashboard 改为纯展示（已完成）
 - **M2 阶段**：建立统一 CLI 入口 `webnovel codex`，提供索引产物与状态查询（已落地）
 - **M3 阶段**：会话级 Skill 加载，提供 `rag verify` 命令入口与 benchmark 契约（已落地）
+- **当前主线**：以 `webnovel agent` 作为直接内嵌 LLM API 的写作入口，保留既有 pipeline / index / RAG 数据面
 
 ## 架构分层
 
-### 第一层：CLI 统一入口（`webnovel codex`）
+### 第一层：Agent / CLI 统一入口（`webnovel agent`）
 
-所有写操作由 CLI 承载，Codex 直接调用 CLI 命令。
+所有主写作操作由内嵌 LLM API 的 agent 承载，CLI 负责提供稳定入口与运行时编排。
 
 ```bash
-# 会话管理
-webnovel codex session start --profile <battle|description|consistency> --project-root <path>
-webnovel codex session stop --session-id <id>
+# 执行整章 agent pipeline
+webnovel agent run --chapter <n> --profile <battle|description|consistency> --publish --project-root <path>
+
+# 可选的 agent 会话管理
+webnovel agent session start --profile <battle|description|consistency> --project-root <path>
+webnovel agent session stop --session-id <id> --project-root <path>
 
 # 索引管理
 webnovel codex index status --project-root <path>
@@ -29,10 +33,13 @@ webnovel codex rag verify --project-root <path> --report json
 ```
 
 **实现文件**：
+- `scripts/data_modules/agent_cli.py` - Agent 命令入口
 - `scripts/data_modules/codex_cli.py` - CLI 命令入口
+- `scripts/data_modules/generation_client.py` - OpenAI-compatible 生成型 LLM API 客户端
 - `scripts/data_modules/session_manager.py` - 会话管理
 - `scripts/data_modules/incremental_indexer.py` - 增量索引
 - `scripts/data_modules/rag_verifier.py` - RAG 验证
+- `scripts/pipeline/generators.py` - 基于内嵌 LLM API 的阶段生成
 
 ### 第二层：Dashboard（纯展示）
 
