@@ -5,6 +5,7 @@ Data Modules - 配置文件
 API 配置通过环境变量读取（支持 .env 文件）：
 - EMBED_BASE_URL, EMBED_MODEL, EMBED_API_KEY
 - RERANK_BASE_URL, RERANK_MODEL, RERANK_API_KEY
+- GENERATION_BASE_URL, GENERATION_MODEL, GENERATION_API_KEY
 """
 
 import os
@@ -162,6 +163,42 @@ class DataModulesConfig:
     @property
     def rerank_url(self) -> str:
         return self.rerank_base_url
+
+    # ================= Generation API 配置 =================
+    generation_api_type: str = field(
+        default_factory=lambda: os.getenv(
+            "GENERATION_API_TYPE",
+            "openai" if (os.getenv("GENERATION_API_KEY") or os.getenv("OPENAI_API_KEY")) else "stub",
+        )
+    )
+    generation_base_url: str = field(
+        default_factory=lambda: os.getenv(
+            "GENERATION_BASE_URL",
+            os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        )
+    )
+    generation_model: str = field(
+        default_factory=lambda: os.getenv(
+            "GENERATION_MODEL",
+            os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        )
+    )
+    generation_api_key: str = field(
+        default_factory=lambda: os.getenv(
+            "GENERATION_API_KEY",
+            os.getenv("OPENAI_API_KEY", ""),
+        )
+    )
+    generation_temperature: float = field(
+        default_factory=lambda: float(os.getenv("GENERATION_TEMPERATURE", "0.7"))
+    )
+    generation_max_tokens: int = field(
+        default_factory=lambda: int(os.getenv("GENERATION_MAX_TOKENS", "4000"))
+    )
+
+    @property
+    def generation_url(self) -> str:
+        return self.generation_base_url
 
     # ================= 并发配置 =================
     embed_concurrency: int = 64

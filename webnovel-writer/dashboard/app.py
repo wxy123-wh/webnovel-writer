@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models.common import ApiErrorResponse
 from .path_guard import safe_resolve
+from .routers.chat import router as chat_router
 from .routers import runtime_router
 from .watcher import FileWatcher
 
@@ -319,6 +320,7 @@ def create_app(
     # M1 阶段：仅保留只读路由
     # 写接口已全部删除，由 CLI 统一入口 `webnovel codex` 承载
     app.include_router(runtime_router)
+    app.include_router(chat_router)
 
     # ===========================================================
     # API：项目元信息

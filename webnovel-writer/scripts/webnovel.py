@@ -22,10 +22,13 @@ from runtime_compat import enable_windows_utf8_stdio
 
 def main() -> None:
     scripts_dir = Path(__file__).resolve().parent
+    project_root = scripts_dir.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
     sys.path.insert(0, str(scripts_dir))
 
     # 延迟导入，避免 sys.path 未就绪
-    from data_modules.webnovel import main as _main
+    from apps.cli.webnovel import main as _main
 
     _main()
 

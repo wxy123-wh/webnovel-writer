@@ -59,6 +59,7 @@ CONSISTENCY_META_KEYS = {
     "sync_version",
 }
 PASSTHROUGH_TOOLS = {
+    "agent",
     "codex",
     "index",
     "state",
@@ -1119,6 +1120,9 @@ def main() -> None:
     p_codex = sub.add_parser("codex", help="转发到 codex_cli（会话 / 索引 / RAG）")
     p_codex.add_argument("args", nargs=argparse.REMAINDER)
 
+    p_agent = sub.add_parser("agent", help="转发到 agent_cli（内嵌 LLM API agent 入口）")
+    p_agent.add_argument("args", nargs=argparse.REMAINDER)
+
     p_consistency = sub.add_parser("consistency-check", help="检查 state/index/rag 一致性并给出诊断建议")
     p_consistency.add_argument("--format", choices=["text", "json"], default="text", help="输出格式")
     p_consistency.set_defaults(func=cmd_consistency_check)
@@ -1226,6 +1230,8 @@ def main() -> None:
 
     if tool == "index":
         raise SystemExit(_run_data_module("index_manager", [*forward_args, *rest]))
+    if tool == "agent":
+        raise SystemExit(_run_data_module("agent_cli", [*forward_args, *rest]))
     if tool == "codex":
         raise SystemExit(_run_data_module("codex_cli", _inject_codex_project_root_args(rest, project_root)))
     if tool == "state":

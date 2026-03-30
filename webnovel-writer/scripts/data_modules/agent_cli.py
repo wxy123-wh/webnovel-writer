@@ -17,7 +17,7 @@ def _ensure_project_root_on_path() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _ensure_project_root_on_path()
-    from apps.cli.codex import main as app_main
+    from apps.cli.agent import main as app_main
 
     return app_main(argv)
 
