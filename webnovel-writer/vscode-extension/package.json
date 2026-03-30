@@ -1,0 +1,93 @@
+{
+  "name": "webnovel-writer-vscode-extension",
+  "displayName": "Webnovel Writer Browser",
+  "description": "VS Code-first writing pipeline for outline -> plot -> events -> scenes -> chapter, plus project browsing.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:webnovelTextBrowser",
+    "onView:webnovelPipeline",
+    "onCommand:webnovelTextBrowser.refresh",
+    "onCommand:webnovelPipeline.refresh",
+    "onCommand:webnovelPipeline.startRun"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "webnovelWriter",
+          "title": "Webnovel Writer",
+          "icon": "media/book.svg"
+        }
+      ]
+    },
+    "views": {
+      "webnovelWriter": [
+        {
+          "id": "webnovelPipeline",
+          "name": "Writing Pipeline",
+          "type": "webview"
+        },
+        {
+          "id": "webnovelTextBrowser",
+          "name": "Text Browser"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "webnovelTextBrowser.refresh",
+        "title": "Webnovel Writer: Refresh Text Browser",
+        "category": "Webnovel Writer"
+      },
+      {
+        "command": "webnovelPipeline.refresh",
+        "title": "Webnovel Writer: Refresh Writing Pipeline",
+        "category": "Webnovel Writer"
+      },
+      {
+        "command": "webnovelPipeline.startRun",
+        "title": "Webnovel Writer: Start Pipeline Run",
+        "category": "Webnovel Writer"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "webnovelTextBrowser.refresh",
+          "when": "view == webnovelTextBrowser",
+          "group": "navigation"
+        },
+        {
+          "command": "webnovelPipeline.refresh",
+          "when": "view == webnovelPipeline",
+          "group": "navigation"
+        },
+        {
+          "command": "webnovelPipeline.startRun",
+          "when": "view == webnovelPipeline",
+          "group": "navigation@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "clean": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\"",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "npm run build && node --test ./out/test/*.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.8.2"
+  }
+}
