@@ -8,10 +8,12 @@ export function useChatStream({
     startStream,
     finalizeStream,
     setError,
+    setSyncError,
     addUserMessage,
     loadMessages,
 }) {
     const abortRef = useRef(null)
+    const providerRef = useRef(null)
 
     const sendStream = useCallback(async content => {
         if (!chatId) return
@@ -30,6 +32,9 @@ export function useChatStream({
         const handle = streamMessage(chatId, content, {
             onEvent: (eventType, data) => {
                 switch (eventType) {
+                    case 'message_start':
+                        providerRef.current = data?.provider || null
+                        break
                     case 'text_delta':
                         appendStreamText(data?.delta || '', data?.message_id)
                         break
@@ -59,7 +64,7 @@ export function useChatStream({
                     const messages = await getMessages(chatId)
                     loadMessages(messages)
                 } catch {
-                    // keep optimistic history if refresh fails
+                    setSyncError('消息同步失败，显示内容可能不完整')
                 }
             },
         })
@@ -73,6 +78,7 @@ export function useChatStream({
         finalizeStream,
         loadMessages,
         setError,
+        setSyncError,
         startStream,
     ])
 
@@ -82,5 +88,5 @@ export function useChatStream({
         finalizeStream()
     }, [finalizeStream])
 
-    return { sendStream, abort }
+    return { sendStream, abort, providerRef }
 }

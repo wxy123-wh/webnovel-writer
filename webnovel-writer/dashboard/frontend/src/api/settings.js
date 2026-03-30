@@ -1,64 +1,5 @@
 const DEFAULT_WORKSPACE_ID = 'workspace-default'
 
-const MOCK_FILE_TREE = [
-    {
-        name: '设定集',
-        path: '设定集',
-        type: 'dir',
-        children: [
-            { name: '角色.md', path: '设定集/角色.md', type: 'file', children: [] },
-            { name: '地域.md', path: '设定集/地域.md', type: 'file', children: [] },
-            { name: '势力.md', path: '设定集/势力.md', type: 'file', children: [] },
-            { name: '法术体系.md', path: '设定集/法术体系.md', type: 'file', children: [] },
-        ],
-    },
-]
-
-const MOCK_FILE_CONTENTS = {
-    '设定集/角色.md': '林昭(角色): 阵营=游侠; 目标=追查星图',
-    '设定集/地域.md': '玄星城(地点): region=东陆; ruler=城主顾衡',
-    '设定集/势力.md': '白莲宗(势力): 立场=敌对; 资源=情报网',
-    '设定集/法术体系.md': '灵核(概念): 属性=火; 阶位=三阶',
-}
-
-const INITIAL_MOCK_DICTIONARY = [
-    {
-        id: 'dict-001',
-        term: '灵核',
-        type: '概念',
-        attrs: { 属性: '火', 阶位: '三阶' },
-        source_file: '设定集/法术体系.md',
-        source_span: '0-22',
-        status: 'confirmed',
-        fingerprint: 'mock-fp-001',
-    },
-    {
-        id: 'dict-002',
-        term: '白莲宗',
-        type: '势力',
-        attrs: { 立场: '敌对' },
-        source_file: '设定集/势力.md',
-        source_span: '0-23',
-        status: 'conflict',
-        fingerprint: 'mock-fp-002',
-        conflict_id: 'conf-002',
-    },
-    {
-        id: 'dict-003',
-        term: '玄星城',
-        type: '地点',
-        attrs: { region: '东陆' },
-        source_file: '设定集/地域.md',
-        source_span: '0-27',
-        status: 'pending',
-        fingerprint: 'mock-fp-003',
-    },
-]
-
-const mockState = {
-    dictionary: INITIAL_MOCK_DICTIONARY.map(item => ({ ...item })),
-}
-
 function resolveProjectRoot(explicitProjectRoot) {
     if (typeof explicitProjectRoot === 'string' && explicitProjectRoot.trim()) {
         return explicitProjectRoot.trim()
@@ -116,17 +57,6 @@ function resolveRuntimeMode() {
     return 'development'
 }
 
-function shouldUseMockFallback() {
-    const disableFallback = typeof globalThis !== 'undefined'
-        && typeof globalThis.__WEBNOVEL_SETTINGS_DISABLE_MOCK_FALLBACK === 'boolean'
-        ? globalThis.__WEBNOVEL_SETTINGS_DISABLE_MOCK_FALLBACK
-        : null
-    if (disableFallback !== null) {
-        return !disableFallback
-    }
-    return resolveRuntimeMode() !== 'production'
-}
-
 async function requestJSON(pathname, { method = 'GET', query, body, signal } = {}) {
     const response = await fetch(createRequestUrl(pathname, query), {
         method,
@@ -173,24 +103,6 @@ function normalizeDictionaryItem(item) {
     }
 }
 
-function listMockDictionary({ term, type, status, limit = 100, offset = 0 } = {}) {
-    let items = mockState.dictionary.map(normalizeDictionaryItem)
-    if (term) {
-        const needle = term.trim().toLowerCase()
-        items = items.filter(item => item.term.toLowerCase().includes(needle))
-    }
-    if (type) {
-        items = items.filter(item => item.type === type)
-    }
-    if (status) {
-        items = items.filter(item => item.status === status)
-    }
-    const total = items.length
-    const start = Math.max(0, offset)
-    const end = Math.min(total, start + Math.max(1, limit))
-    return { items: items.slice(start, end), total }
-}
-
 export function isMockResponse(response) {
     return Boolean(response?.isMock)
 }
@@ -214,101 +126,56 @@ export function getConflictIdFromEntry(entry) {
 
 export async function fetchSettingsFileTree(options = {}) {
     const workspace = buildWorkspace(options)
-    try {
-        const payload = await requestJSON('/api/settings/files/tree', {
-            query: {
-                workspace_id: workspace.workspace_id,
-                project_root: workspace.project_root,
-            },
-            signal: options.signal,
-        })
-        return {
-            status: payload?.status || 'ok',
-            nodes: Array.isArray(payload?.nodes) ? payload.nodes : [],
-            isMock: false,
-        }
-    } catch (error) {
-        if (!shouldUseMockFallback()) {
-            throw error
-        }
-        return {
-            status: 'mock',
-            nodes: MOCK_FILE_TREE,
-            isMock: true,
-            error,
-        }
+    const payload = await requestJSON('/api/settings/files/tree', {
+        query: {
+            workspace_id: workspace.workspace_id,
+            project_root: workspace.project_root,
+        },
+        signal: options.signal,
+    })
+    return {
+        status: payload?.status || 'ok',
+        nodes: Array.isArray(payload?.nodes) ? payload.nodes : [],
     }
 }
 
 export async function readSettingsFile(options = {}) {
     const workspace = buildWorkspace(options)
     const filePath = typeof options.path === 'string' ? options.path.trim() : ''
-    if (!filePath) {
-        return { status: 'invalid', path: '', content: '', isMock: true }
-    }
-    try {
-        const payload = await requestJSON('/api/settings/files/read', {
-            query: {
-                workspace_id: workspace.workspace_id,
-                project_root: workspace.project_root,
-                path: filePath,
-            },
-            signal: options.signal,
-        })
-        return {
-            status: payload?.status || 'ok',
-            path: payload?.path || filePath,
-            content: payload?.content || '',
-            isMock: false,
-        }
-    } catch (error) {
-        if (!shouldUseMockFallback()) {
-            throw error
-        }
-        return {
-            status: 'mock',
+    if (!filePath) throw new Error('文件路径不能为空')
+    const payload = await requestJSON('/api/settings/files/read', {
+        query: {
+            workspace_id: workspace.workspace_id,
+            project_root: workspace.project_root,
             path: filePath,
-            content: MOCK_FILE_CONTENTS[filePath] || '',
-            isMock: true,
-            error,
-        }
+        },
+        signal: options.signal,
+    })
+    return {
+        status: payload?.status || 'ok',
+        path: payload?.path || filePath,
+        content: payload?.content || '',
     }
 }
 
 export async function listSettingDictionary(options = {}) {
     const workspace = buildWorkspace(options)
-    const query = {
-        workspace_id: workspace.workspace_id,
-        project_root: workspace.project_root,
-        term: options.term,
-        type: options.type,
-        status: options.status,
-        limit: options.limit ?? 100,
-        offset: options.offset ?? 0,
-    }
-    try {
-        const payload = await requestJSON('/api/settings/dictionary', {
-            query,
-            signal: options.signal,
-        })
-        const items = Array.isArray(payload?.items) ? payload.items.map(normalizeDictionaryItem) : []
-        return {
-            status: payload?.status || 'ok',
-            items,
-            total: Number.isFinite(payload?.total) ? payload.total : items.length,
-            isMock: false,
-        }
-    } catch (error) {
-        if (!shouldUseMockFallback()) {
-            throw error
-        }
-        const fallback = listMockDictionary(query)
-        return {
-            status: 'mock',
-            items: fallback.items,
-            total: fallback.total,
-            isMock: true,
-            error,
-        }
+    const payload = await requestJSON('/api/settings/dictionary', {
+        query: {
+            workspace_id: workspace.workspace_id,
+            project_root: workspace.project_root,
+            term: options.term,
+            type: options.type,
+            status: options.status,
+            limit: options.limit ?? 100,
+            offset: options.offset ?? 0,
+        },
+        signal: options.signal,
+    })
+    const items = Array.isArray(payload?.items) ? payload.items.map(normalizeDictionaryItem) : []
+    return {
+        status: payload?.status || 'ok',
+        items,
+        total: Number.isFinite(payload?.total) ? payload.total : items.length,
     }
 }

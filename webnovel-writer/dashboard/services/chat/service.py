@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 from core.agent_runtime.chat_models import Message
 from core.agent_runtime.chat_repository import generate_id
@@ -19,6 +20,9 @@ from .streaming import (
 
 class ChatOrchestrationService:
     """Coordinate chat persistence, generation, and skill metadata."""
+
+    _BASE_SYSTEM_PROMPT = "你是网文写作助手。根据项目设定和大纲辅助创作。严格遵循已挂载 Skill 的指令。"
+    _MAX_SKILL_INSTRUCTION_CHARS = 4000
 
     def __init__(self, project_root: Path):
         self.project_root = Path(project_root)
@@ -128,11 +132,139 @@ class ChatOrchestrationService:
 
     def _messages_for_llm(self, chat_id: str) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
+        system_prompt = self._build_system_prompt(chat_id)
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
         for message in self.chat_service.get_chat_history(chat_id):
             text = self._extract_text(message)
             if text:
                 messages.append({"role": message.role, "content": text})
         return messages
+
+    def _build_system_prompt(self, chat_id: str) -> str:
+        sections = [self._BASE_SYSTEM_PROMPT]
+
+        project_context = self._project_context_text()
+        if project_context:
+            sections.append(f"项目上下文：\n{project_context}")
+
+        skill_instructions = self._skill_instruction_text(chat_id)
+        if skill_instructions:
+            sections.append(f"已挂载 Skill 指令：\n{skill_instructions}")
+
+        return "\n\n".join(section for section in sections if section)
+
+    def _project_context_text(self) -> str:
+        state = self._load_project_state()
+        if not state:
+            return ""
+
+        project_info = state.get("project_info")
+        progress = state.get("progress")
+        if not isinstance(project_info, dict):
+            project_info = {}
+        if not isinstance(progress, dict):
+            progress = {}
+
+        lines: list[str] = []
+        title = project_info.get("title")
+        genre = project_info.get("genre")
+        current_chapter = progress.get("current_chapter")
+
+        if isinstance(title, str) and title.strip():
+            lines.append(f"- 作品标题：{title.strip()}")
+        if isinstance(genre, str) and genre.strip():
+            lines.append(f"- 作品类型：{genre.strip()}")
+        if current_chapter is not None and str(current_chapter).strip():
+            lines.append(f"- 当前章节：{current_chapter}")
+
+        return "\n".join(lines)
+
+    def _load_project_state(self) -> dict[str, Any]:
+        state_path = self.project_root / ".webnovel" / "state.json"
+        if not state_path.is_file():
+            return {}
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return state if isinstance(state, dict) else {}
+
+    def _skill_instruction_text(self, chat_id: str) -> str:
+        mounted_skills = self.chat_service.get_chat_skills(chat_id)
+        if not mounted_skills:
+            return ""
+
+        registry_items = self.registry.list_all()
+        registry_by_key = {
+            (str(item.get("source") or "system"), str(item.get("skill_id") or "")): item for item in registry_items
+        }
+        registry_by_id = {str(item.get("skill_id") or ""): item for item in registry_items if item.get("skill_id")}
+
+        skill_entries: list[tuple[str, str, str]] = []
+
+        for mounted_skill in mounted_skills:
+            if not bool(mounted_skill.get("enabled", True)):
+                continue
+
+            source = str(mounted_skill.get("source") or "system")
+            skill_id = str(mounted_skill.get("skill_id") or "").strip()
+            if not skill_id:
+                continue
+
+            registry_item = registry_by_key.get((source, skill_id)) or registry_by_id.get(skill_id) or {}
+            header = f"[{source}:{skill_id}]"
+            full_content = ""
+            if source == "system":
+                full_content = (self.registry.get_skill_content(skill_id) or "").strip()
+
+            description = registry_item.get("description")
+            short_content = description.strip() if isinstance(description, str) else ""
+
+            if not full_content and not short_content:
+                continue
+
+            skill_entries.append((header, full_content, short_content))
+
+        full_segments = [self._format_skill_segment(header, content) for header, content, _ in skill_entries if content]
+        full_prompt = "\n\n".join(full_segments)
+        if full_prompt and len(full_prompt) <= self._MAX_SKILL_INSTRUCTION_CHARS:
+            return full_prompt
+
+        summary_segments = [
+            self._format_skill_segment(header, summary or content)
+            for header, content, summary in skill_entries
+            if summary or content
+        ]
+        summary_prompt = "\n\n".join(summary_segments)
+        if len(summary_prompt) <= self._MAX_SKILL_INSTRUCTION_CHARS:
+            return summary_prompt
+
+        return self._truncate_skill_segments(summary_segments)
+
+    @staticmethod
+    def _format_skill_segment(header: str, content: str) -> str:
+        return f"{header}\n{content.strip()}"
+
+    def _truncate_skill_segments(self, segments: list[str]) -> str:
+        kept_segments: list[str] = []
+        used_chars = 0
+        limit = self._MAX_SKILL_INSTRUCTION_CHARS
+
+        for segment in segments:
+            remaining = limit - used_chars
+            if remaining <= 0:
+                break
+            if len(segment) <= remaining:
+                kept_segments.append(segment)
+                used_chars += len(segment)
+                continue
+            if remaining <= 3:
+                break
+            kept_segments.append(f"{segment[: remaining - 3].rstrip()}...")
+            break
+
+        return "\n\n".join(kept_segments)
 
     @staticmethod
     def _parse_sse_event(event_str: str) -> tuple[str | None, dict[str, object]]:

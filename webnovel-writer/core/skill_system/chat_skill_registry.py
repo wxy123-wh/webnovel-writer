@@ -12,6 +12,15 @@ class ChatSkillRegistry:
         self.project_root = Path(project_root) if project_root is not None else None
         self._base = Path(__file__).resolve().parents[2]
 
+    def get_skill_content(self, skill_id: str) -> str | None:
+        skill_md = self._base / "skills" / skill_id / "SKILL.md"
+        if not skill_md.is_file():
+            return None
+        try:
+            return skill_md.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
     def list_all(self) -> list[dict[str, Any]]:
         skills: dict[str, ChatSkill] = {}
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
@@ -149,6 +150,100 @@ class GenerationAPIClient:
             self.stats.total_calls += 1
             self.stats.total_time += time.time() - start
             return result
+        except Exception:
+            self.stats.errors += 1
+            raise
+
+    def complete_text_stream(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        stub_text: str = "",
+    ) -> Generator[str, None, None]:
+        """Stream text completion, yielding content chunks as they arrive."""
+        start = time.time()
+        try:
+            if self.config.generation_api_type == "stub":
+                if stub_text:
+                    yield stub_text
+                self.stats.total_calls += 1
+                self.stats.total_time += time.time() - start
+                return
+
+            if not self.config.generation_api_key:
+                raise ValueError("GENERATION_API_KEY / OPENAI_API_KEY is required for openai generation mode")
+
+            url = self._build_url()
+            headers = self._build_headers()
+            payload = self._build_payload(messages=messages, expect_json=False)
+            payload["stream"] = True
+            max_retries = getattr(self.config, "api_max_retries", 3)
+            base_delay = getattr(self.config, "api_retry_delay", 1.0)
+
+            yielded_any = False
+            for attempt in range(max_retries):
+                req = request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers=headers,
+                    method="POST",
+                )
+                try:
+                    with request.urlopen(req, timeout=self.config.normal_timeout) as resp:
+                        for raw_line in resp:
+                            line = raw_line.decode("utf-8", errors="ignore").strip()
+                            if not line or not line.startswith("data: "):
+                                continue
+
+                            data_str = line[6:]
+                            if data_str.strip() == "[DONE]":
+                                self.stats.total_calls += 1
+                                self.stats.total_time += time.time() - start
+                                return
+
+                            try:
+                                chunk = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+
+                            choices = chunk.get("choices")
+                            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                                continue
+
+                            delta = choices[0].get("delta")
+                            if not isinstance(delta, dict):
+                                continue
+
+                            content = delta.get("content")
+                            if isinstance(content, str) and content:
+                                yielded_any = True
+                                yield content
+
+                    self.stats.total_calls += 1
+                    self.stats.total_time += time.time() - start
+                    return
+                except error.HTTPError as exc:
+                    body = exc.read().decode("utf-8", errors="ignore")
+                    if not yielded_any and exc.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                        time.sleep(base_delay * (2 ** attempt))
+                        continue
+                    if not yielded_any:
+                        yield self.complete_text(messages=messages, stub_text=stub_text)
+                        return
+                    raise RuntimeError(f"generation HTTP {exc.code}: {body[:200]}") from exc
+                except Exception:
+                    if not yielded_any and attempt < max_retries - 1:
+                        time.sleep(base_delay * (2 ** attempt))
+                        continue
+                    if not yielded_any:
+                        yield self.complete_text(messages=messages, stub_text=stub_text)
+                        return
+                    raise
+
+            if not yielded_any:
+                yield self.complete_text(messages=messages, stub_text=stub_text)
+                return
+            raise RuntimeError("generation request exhausted retries")
         except Exception:
             self.stats.errors += 1
             raise

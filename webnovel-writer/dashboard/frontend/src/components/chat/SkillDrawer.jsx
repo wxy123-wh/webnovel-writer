@@ -1,46 +1,48 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getChatSkills, listSkills, updateChatSkills } from '../../api/chat.js'
 
 export default function SkillDrawer({ chatId, open, onClose }) {
     const [allSkills, setAllSkills] = useState([])
     const [chatSkills, setChatSkills] = useState([])
     const [loading, setLoading] = useState(false)
+    const [error, setError] = useState(null)
+    const [retryKey, setRetryKey] = useState(0)
+    const cancelledRef = useRef(false)
+
+    const loadDrawerData = useCallback(async () => {
+        setLoading(true)
+        setError(null)
+        try {
+            const [all, mounted] = await Promise.all([
+                listSkills(),
+                chatId ? getChatSkills(chatId) : Promise.resolve([]),
+            ])
+
+            if (!cancelledRef.current) {
+                setAllSkills(all)
+                setChatSkills(mounted)
+            }
+        } catch (err) {
+            if (!cancelledRef.current) {
+                setError(err?.message || '加载 Skill 列表失败')
+            }
+        } finally {
+            if (!cancelledRef.current) {
+                setLoading(false)
+            }
+        }
+    }, [chatId])
 
     useEffect(() => {
         if (!open) return undefined
 
-        let cancelled = false
-
-        async function loadDrawerData() {
-            setLoading(true)
-            try {
-                const [all, mounted] = await Promise.all([
-                    listSkills(),
-                    chatId ? getChatSkills(chatId) : Promise.resolve([]),
-                ])
-
-                if (!cancelled) {
-                    setAllSkills(all)
-                    setChatSkills(mounted)
-                }
-            } catch {
-                if (!cancelled) {
-                    setAllSkills([])
-                    setChatSkills([])
-                }
-            } finally {
-                if (!cancelled) {
-                    setLoading(false)
-                }
-            }
-        }
-
+        cancelledRef.current = false
         void loadDrawerData()
 
         return () => {
-            cancelled = true
+            cancelledRef.current = true
         }
-    }, [chatId, open])
+    }, [loadDrawerData, open, retryKey])
 
     const toggleSkill = useCallback(async (skillId, enable) => {
         if (!chatId) return
@@ -60,6 +62,13 @@ export default function SkillDrawer({ chatId, open, onClose }) {
             <div className="skill-drawer-body">
                 {loading ? (
                     <div className="loading">加载中...</div>
+                ) : error ? (
+                    <div className="skill-error" style={{ display: 'grid', gap: '12px' }}>
+                        <p style={{ margin: 0 }}>⚠️ Skill 加载失败: {error}</p>
+                        <div>
+                            <button onClick={() => setRetryKey(key => key + 1)} type="button">重试</button>
+                        </div>
+                    </div>
                 ) : (
                     allSkills.map(skill => {
                         const mounted = chatSkills.find(item => item.skill_id === skill.skill_id)
