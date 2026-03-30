@@ -5,16 +5,23 @@ import DashboardPage from './pages/DashboardPage.jsx'
 import EntitiesPage from './pages/EntitiesPage.jsx'
 import GraphPage from './pages/GraphPage.jsx'
 import ChaptersPage from './pages/ChaptersPage.jsx'
+import ChatPage from './pages/ChatPage.jsx'
 import FilesPage from './pages/FilesPage.jsx'
 import ReadingPowerPage from './pages/ReadingPowerPage.jsx'
 import SkillsPage from './pages/SkillsPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 import OutlineWorkspacePage from './pages/OutlineWorkspacePage.jsx'
 
-const DEFAULT_ROUTE = 'dashboard'
+const DEFAULT_ROUTE = 'chat'
 
 // P2-E 修复：用内联 SVG 图标替换原来的字母占位符，提升商业产品专业感
 const Icons = {
+    chat: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <path d="M8 9h8" /><path d="M8 13h5" />
+        </svg>
+    ),
     dashboard: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
@@ -72,6 +79,7 @@ const Icons = {
 }
 
 const ROUTES = [
+    { id: 'chat', icon: Icons.chat, label: 'Chat', component: ChatPage },
     { id: 'dashboard', icon: Icons.dashboard, label: '数据总览', component: DashboardPage },
     { id: 'entities', icon: Icons.entities, label: '设定词典', component: EntitiesPage },
     { id: 'graph', icon: Icons.graph, label: '关系图谱', component: GraphPage },
