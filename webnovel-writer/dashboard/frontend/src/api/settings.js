@@ -36,27 +36,6 @@ function createRequestUrl(pathname, query = {}) {
     return url.toString()
 }
 
-function resolveRuntimeMode() {
-    if (typeof import.meta !== 'undefined' && import.meta?.env) {
-        const mode = typeof import.meta.env.MODE === 'string'
-            ? import.meta.env.MODE.trim().toLowerCase()
-            : ''
-        if (mode) {
-            return mode
-        }
-        if (import.meta.env.PROD === true) {
-            return 'production'
-        }
-        if (import.meta.env.DEV === true) {
-            return 'development'
-        }
-    }
-    if (typeof process !== 'undefined' && process?.env?.NODE_ENV) {
-        return process.env.NODE_ENV.trim().toLowerCase()
-    }
-    return 'development'
-}
-
 async function requestJSON(pathname, { method = 'GET', query, body, signal } = {}) {
     const response = await fetch(createRequestUrl(pathname, query), {
         method,

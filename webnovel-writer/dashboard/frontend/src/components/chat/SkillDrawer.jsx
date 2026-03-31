@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getChatSkills, listSkills, updateChatSkills } from '../../api/chat.js'
 
-export default function SkillDrawer({ chatId, open, onClose }) {
+export default function SkillDrawer({ chatId, open, onClose, onSkillsChanged }) {
     const [allSkills, setAllSkills] = useState([])
     const [chatSkills, setChatSkills] = useState([])
     const [loading, setLoading] = useState(false)
@@ -19,7 +19,7 @@ export default function SkillDrawer({ chatId, open, onClose }) {
             ])
 
             if (!cancelledRef.current) {
-                setAllSkills(all)
+                setAllSkills(all.filter(skill => skill?.skill_id === 'webnovel-write'))
                 setChatSkills(mounted)
             }
         } catch (err) {
@@ -49,7 +49,8 @@ export default function SkillDrawer({ chatId, open, onClose }) {
         await updateChatSkills(chatId, [{ skill_id: skill.skill_id, source: skill.source, enabled: enable }])
         const nextSkills = await getChatSkills(chatId)
         setChatSkills(nextSkills)
-    }, [chatId])
+        onSkillsChanged?.(nextSkills)
+    }, [chatId, onSkillsChanged])
 
     if (!open) return null
 
@@ -60,6 +61,7 @@ export default function SkillDrawer({ chatId, open, onClose }) {
                 <button className="skill-drawer-close" onClick={onClose} type="button">✕</button>
             </div>
             <div className="skill-drawer-body">
+                <p className="skill-drawer-note">当前界面只保留已经接入并验证过的写作技能，避免把未完成能力暴露给你。</p>
                 {loading ? (
                     <div className="loading">加载中...</div>
                 ) : error ? (

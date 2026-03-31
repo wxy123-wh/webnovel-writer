@@ -140,10 +140,6 @@ async function requestJSON(path, { method = 'GET', query, body } = {}) {
     return payload ?? {}
 }
 
-export function getWorkspaceContext(options = {}) {
-    return normalizeWorkspaceContext(options)
-}
-
 export async function listSkills(options = {}) {
     const workspace = normalizeWorkspaceContext(options)
     const payload = await requestJSON(API_ROOT, {

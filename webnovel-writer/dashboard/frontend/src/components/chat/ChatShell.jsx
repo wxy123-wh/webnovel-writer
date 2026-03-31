@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getMessages } from '../../api/chat.js'
+import { getChatSkills, getMessages } from '../../api/chat.js'
 import Composer from './Composer.jsx'
 import MessageList from './MessageList.jsx'
 import SkillDrawer from './SkillDrawer.jsx'
 import { useChatState } from './useChatState.js'
 import { useChatStream } from './useChatStream.js'
 
-export default function ChatShell({ chatId }) {
+export default function ChatShell({ chatId, projectSummary = null }) {
     const {
         state,
         setChat,
@@ -22,9 +22,9 @@ export default function ChatShell({ chatId }) {
         setLoading,
     } = useChatState()
     const [skillOpen, setSkillOpen] = useState(false)
-    const [isStubMode, setIsStubMode] = useState(false)
+    const [mountedSkills, setMountedSkills] = useState([])
 
-    const { sendStream, abort, providerRef } = useChatStream({
+    const { sendStream, abort } = useChatStream({
         chatId,
         addUserMessage,
         startStream,
@@ -37,10 +37,6 @@ export default function ChatShell({ chatId }) {
     })
 
     useEffect(() => {
-        setIsStubMode(providerRef.current === 'stub')
-    }, [providerRef, state.messages])
-
-    useEffect(() => {
         let cancelled = false
 
         async function loadChatMessages() {
@@ -49,9 +45,13 @@ export default function ChatShell({ chatId }) {
             setChat({ chat_id: chatId, title: '' })
             setLoading(true)
             try {
-                const messages = await getMessages(chatId)
+                const [messages, skills] = await Promise.all([
+                    getMessages(chatId),
+                    getChatSkills(chatId),
+                ])
                 if (!cancelled) {
                     loadMessages(messages)
+                    setMountedSkills(Array.isArray(skills) ? skills.filter(skill => skill.enabled) : [])
                 }
             } catch (error) {
                 if (!cancelled) {
@@ -80,7 +80,23 @@ export default function ChatShell({ chatId }) {
                         ⚡ Skills
                     </button>
                 </div>
-                {state.isLoading ? <div className="loading">消息加载中...</div> : <MessageList messages={state.messages} />}
+                <div className="chat-skill-summary">
+                    {mountedSkills.length > 0 ? (
+                        <>
+                            <span className="chat-skill-summary-label">当前技能约束</span>
+                            <div className="chat-skill-chip-list">
+                                {mountedSkills.map(skill => (
+                                    <span className="chat-skill-chip" key={`${skill.source}:${skill.skill_id}`}>
+                                        {skill.name || skill.skill_id}
+                                    </span>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <span className="chat-skill-summary-empty">当前未启用额外技能；你可以直接开聊，或打开 Skills 为这轮对话补充约束。</span>
+                    )}
+                </div>
+                {state.isLoading ? <div className="loading">消息加载中...</div> : <MessageList messages={state.messages} projectSummary={projectSummary} onStarterSelect={sendStream} />}
                 {state.error ? <div className="chat-error">{state.error}</div> : null}
                 {state.syncError ? (
                     <div className="chat-sync-warning" style={{
@@ -110,27 +126,14 @@ export default function ChatShell({ chatId }) {
                         </button>
                     </div>
                 ) : null}
-                {isStubMode ? (
-                    <div style={{
-                        padding: '8px 12px',
-                        background: '#fff3cd',
-                        border: '1px solid #ffc107',
-                        borderRadius: 4,
-                        fontSize: 13,
-                        color: '#856404',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                    }}>
-                        <span>⚠️ 模拟模式 — AI 生成内容为模板占位。请配置 GENERATION_API_KEY 以启用真实生成。</span>
-                        <button onClick={() => setIsStubMode(false)} type="button" style={{
-                            border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, color: '#856404',
-                        }}>✕</button>
-                    </div>
-                ) : null}
                 <Composer onSend={sendStream} disabled={state.isStreaming} />
             </div>
-            <SkillDrawer chatId={chatId} open={skillOpen} onClose={() => setSkillOpen(false)} />
+            <SkillDrawer
+                chatId={chatId}
+                open={skillOpen}
+                onClose={() => setSkillOpen(false)}
+                onSkillsChanged={skills => setMountedSkills(Array.isArray(skills) ? skills.filter(skill => skill.enabled) : [])}
+            />
         </div>
     )
 }

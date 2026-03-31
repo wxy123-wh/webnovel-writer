@@ -27,11 +27,6 @@ export function createOutlineWorkspace({ workspaceId, projectRoot } = {}) {
     }
 }
 
-export function __resetOutlineProjectRootCacheForTests() {
-    cachedAutoProjectRoot = ''
-    pendingAutoProjectRootPromise = null
-}
-
 function createRequestUrl(pathname, query = {}) {
     const url = new URL(pathname, window.location.origin)
     Object.entries(query).forEach(([key, value]) => {
