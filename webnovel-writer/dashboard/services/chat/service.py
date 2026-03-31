@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Generator
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from core.book_hierarchy import BookHierarchyConflictError, BookHierarchyService, BookHierarchyValidationError
 from core.agent_runtime.chat_models import Message
 from core.agent_runtime.chat_repository import generate_id
 from core.skill_system import ChatSkillRegistry
@@ -23,6 +26,21 @@ class ChatOrchestrationService:
 
     _BASE_SYSTEM_PROMPT = "你是网文写作助手。根据项目设定和大纲辅助创作。严格遵循已挂载 Skill 的指令。"
     _MAX_SKILL_INSTRUCTION_CHARS = 4000
+    _SKILL_DRAFT_SYSTEM_PROMPT = """你是一个 Skill 设计助手。你的任务是根据用户要求，产出一个可保存到 Skills Registry 的结构化 skill 草稿。\n\n输出必须是严格 JSON 对象，且只能包含这些字段：\n- reply: 中文简短说明，告诉用户你生成或更新了什么\n- skill_id: 仅使用小写字母、数字、连字符，形如 scene-beats\n- name: 给用户看的技能名称\n- description: 一句简洁说明这个技能做什么\n- instruction_template: 完整的技能模板指令，使用 Markdown 文本\n\n要求：\n1. 如果当前草稿已有字段，优先在其基础上迭代，不要无故清空已有内容。\n2. 如果用户只要求修改部分内容，只更新相关字段，其余字段尽量保留。\n3. instruction_template 必须是可以直接保存的完整内容，不要输出解释性前后缀。\n4. 不要输出 Markdown 代码块，不要输出 JSON 之外的任何文字。"""
+    _IMMEDIATE_CHILDREN = {
+        "outline": "plot",
+        "plot": "event",
+        "event": "scene",
+        "scene": "chapter",
+    }
+
+    class WorkflowChatError(Exception):
+        def __init__(self, *, status_code: int, error_code: str, message: str, details: dict[str, Any] | None = None):
+            super().__init__(message)
+            self.status_code = status_code
+            self.error_code = error_code
+            self.message = message
+            self.details = details or {}
 
     def __init__(self, project_root: Path):
         self.project_root = Path(project_root)
@@ -30,8 +48,9 @@ class ChatOrchestrationService:
 
         self.chat_service = ChatService(self.project_root)
         self.registry = ChatSkillRegistry(self.project_root)
+        self.hierarchy_service = BookHierarchyService(self.project_root)
 
-    def create_chat(self, request: "CreateChatRequest") -> dict:
+    def create_chat(self, request: Any) -> dict[str, Any]:
         chat = self.chat_service.create_chat(
             title=request.title,
             profile=request.profile,
@@ -53,12 +72,13 @@ class ChatOrchestrationService:
         self._require_chat(chat_id)
         return [message.to_dict(include_parts=True) for message in self.chat_service.get_chat_history(chat_id)]
 
-    def send_message(self, chat_id: str, content: str) -> dict:
-        assistant_message = self._run_completion(chat_id, content)
+    def send_message(self, chat_id: str, content: str, workflow: dict[str, Any] | None = None) -> dict:
+        assistant_message = self._run_completion(chat_id, content, workflow=workflow)
         return assistant_message.to_dict(include_parts=True)
 
-    def send_and_stream(self, chat_id: str, content: str) -> Generator[str, None, None]:
+    def send_and_stream(self, chat_id: str, content: str, workflow: dict[str, Any] | None = None) -> Generator[str, None, None]:
         self._require_chat(chat_id)
+        prepared_workflow = self.prepare_workflow(workflow) if workflow else None
         self.chat_service.add_user_message(chat_id, content)
         assistant_message_id = generate_id("msg")
         self._create_streaming_message(chat_id, assistant_message_id)
@@ -69,7 +89,7 @@ class ChatOrchestrationService:
         error_payload: dict[str, str] | None = None
 
         for event_str in adapter.stream_chat(
-            messages=self._messages_for_llm(chat_id),
+            messages=self._messages_for_llm(chat_id, prepared_workflow),
             message_id=assistant_message_id,
             chat_id=chat_id,
         ):
@@ -100,7 +120,7 @@ class ChatOrchestrationService:
                 chat_id=chat_id,
                 message_id=assistant_message_id,
                 status="complete",
-                parts=[{"type": "text", "payload": {"text": collected_text}}],
+                parts=self._finalize_workflow_parts(prepared_workflow, collected_text),
             )
 
     def get_chat_skills(self, chat_id: str) -> list[dict]:
@@ -112,6 +132,53 @@ class ChatOrchestrationService:
         self._require_chat(chat_id)
         mounted = self.chat_service.mount_skills(chat_id, skills)
         return self._enrich_skills(mounted)
+
+    def generate_skill_draft(self, prompt: str, current_draft: dict[str, Any] | None = None) -> dict[str, Any]:
+        normalized_prompt = str(prompt or "").strip()
+        if not normalized_prompt:
+            raise self.WorkflowChatError(
+                status_code=400,
+                error_code="skill_draft_prompt_required",
+                message="Skill draft prompt is required.",
+            )
+
+        config = DataModulesConfig(project_root=self.project_root)
+        provider = str(getattr(config, "generation_api_type", "local") or "local").strip().lower()
+        api_key = str(getattr(config, "generation_api_key", "") or "").strip()
+        if provider in {"", "local", "stub"} or not api_key:
+            raise self.WorkflowChatError(
+                status_code=503,
+                error_code="generation_unavailable",
+                message="Generation provider is not configured for real skill draft generation.",
+                details={"provider": provider or "local"},
+            )
+
+        from scripts.data_modules.generation_client import GenerationAPIClient
+
+        messages = self._skill_draft_messages(normalized_prompt, current_draft or {})
+        try:
+            payload = GenerationAPIClient(config).complete_json(messages=messages)
+        except Exception as exc:
+            raise self.WorkflowChatError(
+                status_code=502,
+                error_code="skill_draft_generation_failed",
+                message="Skill draft generation failed.",
+                details={"error": str(exc)},
+            ) from exc
+
+        draft = self._normalize_skill_draft_payload(payload, current_draft or {})
+        field_errors = self._validate_generated_skill_draft(draft)
+        if field_errors:
+            raise self.WorkflowChatError(
+                status_code=422,
+                error_code="skill_draft_invalid",
+                message="Generated skill draft is incomplete.",
+                details={"field_errors": field_errors},
+            )
+        return {
+            "reply": str(payload.get("reply") or "已基于你的要求生成新的 skill 草稿。"),
+            "draft": draft,
+        }
 
     def _require_chat(self, chat_id: str) -> None:
         if self.chat_service.get_chat(chat_id) is None:
@@ -130,9 +197,9 @@ class ChatOrchestrationService:
                 chunks.append(text)
         return "\n".join(chunks)
 
-    def _messages_for_llm(self, chat_id: str) -> list[dict[str, str]]:
+    def _messages_for_llm(self, chat_id: str, workflow: dict[str, Any] | None = None) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
-        system_prompt = self._build_system_prompt(chat_id)
+        system_prompt = self._build_system_prompt(chat_id, workflow)
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         for message in self.chat_service.get_chat_history(chat_id):
@@ -141,7 +208,7 @@ class ChatOrchestrationService:
                 messages.append({"role": message.role, "content": text})
         return messages
 
-    def _build_system_prompt(self, chat_id: str) -> str:
+    def _build_system_prompt(self, chat_id: str, workflow: dict[str, Any] | None = None) -> str:
         sections = [self._BASE_SYSTEM_PROMPT]
 
         project_context = self._project_context_text()
@@ -152,7 +219,103 @@ class ChatOrchestrationService:
         if skill_instructions:
             sections.append(f"已挂载 Skill 指令：\n{skill_instructions}")
 
+        workflow_context = self._workflow_context_text(workflow)
+        if workflow_context:
+            sections.append(workflow_context)
+
         return "\n\n".join(section for section in sections if section)
+
+    def prepare_workflow(self, workflow: dict[str, Any] | None) -> dict[str, Any] | None:
+        if workflow is None:
+            return None
+        action = str(workflow.get("action") or "").strip()
+        book_id = str(workflow.get("book_id") or "").strip()
+        node_type = str(workflow.get("node_type") or "").strip()
+        node_id = str(workflow.get("node_id") or "").strip()
+        target_type = str(workflow.get("target_type") or "").strip()
+
+        if not node_type or not node_id:
+            raise self.WorkflowChatError(
+                status_code=400,
+                error_code="workflow_node_required",
+                message="Workflow actions require a selected hierarchy node.",
+                details={"action": action},
+            )
+
+        node = self.hierarchy_service.repository.get_entity(node_type, node_id)
+        if node is None or getattr(node, "book_id", None) != book_id:
+            raise self.WorkflowChatError(
+                status_code=404,
+                error_code="workflow_node_not_found",
+                message="Workflow node was not found.",
+                details={"book_id": book_id, "node_type": node_type, "node_id": node_id},
+            )
+
+        parent = self._workflow_parent(node_type, node)
+        expected_target_type = self._IMMEDIATE_CHILDREN.get(node_type)
+        if action == "split":
+            if target_type != expected_target_type:
+                raise self.WorkflowChatError(
+                    status_code=400,
+                    error_code="invalid_workflow_target",
+                    message="Workflow target does not match the allowed immediate child type.",
+                    details={
+                        "action": action,
+                        "node_type": node_type,
+                        "target_type": target_type,
+                        "expected_target_type": expected_target_type,
+                    },
+                )
+        elif action == "edit":
+            if node_type != "chapter":
+                raise self.WorkflowChatError(
+                    status_code=400,
+                    error_code="invalid_workflow_target",
+                    message="Workflow target does not match the allowed immediate child type.",
+                    details={
+                        "action": action,
+                        "node_type": node_type,
+                        "target_type": node_type,
+                        "expected_target_type": "chapter",
+                    },
+                )
+
+        return {
+            "action": action,
+            "book_id": book_id,
+            "node_type": node_type,
+            "node_id": node_id,
+            "target_type": target_type or expected_target_type,
+            "node": node,
+            "parent": parent,
+        }
+
+    def _workflow_context_text(self, workflow: dict[str, Any] | None) -> str:
+        if workflow is None:
+            return ""
+        canon_entries = self.hierarchy_service.repository.list_canon_entries(book_id=str(workflow["book_id"]))
+        sections: list[str] = []
+        if canon_entries:
+            canon_lines = ["已批准 Canon："]
+            for entry in canon_entries:
+                canon_lines.append(f"- 标题：{entry.title}")
+                canon_lines.append(f"  内容：{entry.body}")
+            sections.append("\n".join(canon_lines))
+
+        node = workflow["node"]
+        node_lines = ["当前节点：", f"- 类型：{workflow['node_type']}", f"- 标题：{node.title}"]
+        if getattr(node, "body", ""):
+            node_lines.append(f"- 内容：{node.body}")
+        sections.append("\n".join(node_lines))
+
+        parent = workflow.get("parent")
+        if parent is not None:
+            parent_type = self._parent_type(str(workflow["node_type"]))
+            parent_lines = ["直接父节点：", f"- 类型：{parent_type}", f"- 标题：{parent.title}"]
+            if getattr(parent, "body", ""):
+                parent_lines.append(f"- 内容：{parent.body}")
+            sections.append("\n".join(parent_lines))
+        return "\n\n".join(sections)
 
     def _project_context_text(self) -> str:
         state = self._load_project_state()
@@ -179,6 +342,52 @@ class ChatOrchestrationService:
             lines.append(f"- 当前章节：{current_chapter}")
 
         return "\n".join(lines)
+
+    def _skill_draft_messages(self, prompt: str, current_draft: dict[str, Any]) -> list[dict[str, str]]:
+        sections = [self._SKILL_DRAFT_SYSTEM_PROMPT]
+        project_context = self._project_context_text()
+        if project_context:
+            sections.append(f"当前项目上下文：\n{project_context}")
+        normalized_draft = self._normalize_skill_draft_payload(current_draft, {})
+        sections.append(
+            "当前草稿：\n" + json.dumps(normalized_draft, ensure_ascii=False, indent=2)
+        )
+        return [
+            {"role": "system", "content": "\n\n".join(section for section in sections if section)},
+            {"role": "user", "content": prompt},
+        ]
+
+    @staticmethod
+    def _normalize_skill_draft_payload(payload: dict[str, Any], current_draft: dict[str, Any]) -> dict[str, str]:
+        merged = {
+            "skill_id": str(payload.get("skill_id") or current_draft.get("skill_id") or "").strip(),
+            "name": str(payload.get("name") or current_draft.get("name") or "").strip(),
+            "description": str(payload.get("description") or current_draft.get("description") or "").strip(),
+            "instruction_template": str(
+                payload.get("instruction_template")
+                or current_draft.get("instruction_template")
+                or ""
+            ).strip(),
+        }
+        merged["skill_id"] = ChatOrchestrationService._normalize_skill_id(merged["skill_id"])
+        return merged
+
+    @staticmethod
+    def _validate_generated_skill_draft(draft: dict[str, str]) -> dict[str, str]:
+        field_errors: dict[str, str] = {}
+        if not str(draft.get("skill_id") or "").strip():
+            field_errors["skill_id"] = "Skill ID is required."
+        if not str(draft.get("name") or "").strip():
+            field_errors["name"] = "Name is required."
+        if not str(draft.get("instruction_template") or "").strip():
+            field_errors["instruction_template"] = "Instruction template is required."
+        return field_errors
+
+    @staticmethod
+    def _normalize_skill_id(value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9-]+", "-", str(value or "").strip().lower())
+        normalized = re.sub(r"-{2,}", "-", normalized)
+        return normalized.strip("-")
 
     def _load_project_state(self) -> dict[str, Any]:
         state_path = self.project_root / ".webnovel" / "state.json"
@@ -306,7 +515,7 @@ class ChatOrchestrationService:
                         part_id=generate_id("part"),
                         message_id=message_id,
                         seq=index,
-                        part_type=str(part["type"]),
+                        part_type=cast(Any, str(part["type"])),
                         payload=dict(part.get("payload") or {}),
                     )
                 )
@@ -321,8 +530,9 @@ class ChatOrchestrationService:
             raise RuntimeError(f"chat message not found after finalize: {message_id}")
         return message
 
-    def _run_completion(self, chat_id: str, content: str) -> Message:
+    def _run_completion(self, chat_id: str, content: str, workflow: dict[str, Any] | None = None) -> Message:
         self._require_chat(chat_id)
+        prepared_workflow = self.prepare_workflow(workflow) if workflow else None
         self.chat_service.add_user_message(chat_id, content)
         assistant_message_id = generate_id("msg")
         self._create_streaming_message(chat_id, assistant_message_id)
@@ -332,7 +542,7 @@ class ChatOrchestrationService:
         completed = False
         error_payload: dict[str, str] | None = None
         for event_str in adapter.stream_chat(
-            messages=self._messages_for_llm(chat_id),
+            messages=self._messages_for_llm(chat_id, prepared_workflow),
             message_id=assistant_message_id,
             chat_id=chat_id,
         ):
@@ -362,8 +572,110 @@ class ChatOrchestrationService:
             chat_id=chat_id,
             message_id=assistant_message_id,
             status="complete",
-            parts=[{"type": "text", "payload": {"text": collected_text}}],
+            parts=self._finalize_workflow_parts(prepared_workflow, collected_text),
         )
+
+    def _finalize_workflow_parts(self, workflow: dict[str, Any] | None, collected_text: str) -> list[dict[str, object]]:
+        parts: list[dict[str, object]] = [{"type": "text", "payload": {"text": collected_text}}]
+        if workflow is None:
+            return parts
+        payload = self._parse_workflow_payload(collected_text)
+        proposal = self._create_workflow_proposal(workflow, payload)
+        parts.append(
+            {
+                "type": "tool_result",
+                "payload": {
+                    "action": workflow["action"],
+                    "proposal": self._serialize(proposal),
+                },
+            }
+        )
+        return parts
+
+    @staticmethod
+    def _parse_workflow_payload(text: str) -> dict[str, Any]:
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _create_workflow_proposal(self, workflow: dict[str, Any], payload: dict[str, Any]):
+        action = str(workflow["action"])
+        book_id = str(workflow["book_id"])
+        node_type = str(workflow["node_type"])
+        node_id = str(workflow["node_id"])
+        if action == "split":
+            proposed_children = payload.get("proposed_children")
+            if not isinstance(proposed_children, list) or not proposed_children:
+                raise self.WorkflowChatError(
+                    status_code=400,
+                    error_code="workflow_generation_invalid",
+                    message="Workflow generation result is missing proposed children.",
+                    details={"action": action, "node_type": node_type},
+                )
+            return self.hierarchy_service.create_structural_proposal(
+                book_id,
+                parent_type=node_type,
+                parent_id=node_id,
+                child_type=str(workflow["target_type"]),
+                proposal_type=f"{node_type}_split",
+                proposed_children=[dict(item) for item in proposed_children if isinstance(item, dict)],
+            )
+        if action == "extract":
+            return self.hierarchy_service.create_canon_extraction_proposal(
+                book_id,
+                source_type=node_type,
+                source_id=node_id,
+                title=str(payload.get("title") or ""),
+                body=str(payload.get("body") or ""),
+                metadata=dict(payload.get("metadata") or {}),
+            )
+        if action == "edit":
+            return self.hierarchy_service.create_chapter_edit_proposal(
+                book_id,
+                chapter_id=node_id,
+                summary=str(payload.get("summary") or ""),
+                proposed_update={
+                    "title": str(payload.get("title") or getattr(workflow["node"], "title", "")),
+                    "body": str(payload.get("body") or getattr(workflow["node"], "body", "")),
+                    "metadata": dict(payload.get("metadata") or {}),
+                },
+            )
+        raise self.WorkflowChatError(
+            status_code=400,
+            error_code="invalid_workflow_action",
+            message="Workflow action is not supported.",
+            details={"action": action},
+        )
+
+    def _workflow_parent(self, node_type: str, node: Any):
+        parent_type = self._parent_type(node_type)
+        if parent_type is None:
+            return None
+        parent_id = getattr(node, f"{parent_type}_id", None)
+        if not isinstance(parent_id, str):
+            return None
+        return self.hierarchy_service.repository.get_entity(parent_type, parent_id)
+
+    @staticmethod
+    def _parent_type(node_type: str) -> str | None:
+        return {
+            "plot": "outline",
+            "event": "plot",
+            "scene": "event",
+            "chapter": "scene",
+        }.get(node_type)
+
+    @staticmethod
+    def _serialize(value: Any) -> Any:
+        if is_dataclass(value):
+            return asdict(cast(Any, value))
+        if isinstance(value, list):
+            return [ChatOrchestrationService._serialize(item) for item in value]
+        if isinstance(value, dict):
+            return {key: ChatOrchestrationService._serialize(item) for key, item in value.items()}
+        return value
 
     def _enrich_skills(self, mounted_skills: list[dict]) -> list[dict]:
         registry_items = self.registry.list_all()

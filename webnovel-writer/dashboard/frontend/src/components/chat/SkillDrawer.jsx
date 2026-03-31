@@ -19,7 +19,7 @@ export default function SkillDrawer({ chatId, open, onClose, onSkillsChanged }) 
             ])
 
             if (!cancelledRef.current) {
-                setAllSkills(all.filter(skill => skill?.skill_id === 'webnovel-write'))
+                setAllSkills(Array.isArray(all) ? all : [])
                 setChatSkills(mounted)
             }
         } catch (err) {
@@ -61,7 +61,7 @@ export default function SkillDrawer({ chatId, open, onClose, onSkillsChanged }) 
                 <button className="skill-drawer-close" onClick={onClose} type="button">✕</button>
             </div>
             <div className="skill-drawer-body">
-                <p className="skill-drawer-note">当前界面只保留已经接入并验证过的写作技能，避免把未完成能力暴露给你。</p>
+                <p className="skill-drawer-note">这里会展示当前可挂载的系统技能与项目技能。你在 Skills 页面新建的模板技能会自动出现在这里。</p>
                 {loading ? (
                     <div className="loading">加载中...</div>
                 ) : error ? (
@@ -69,6 +69,13 @@ export default function SkillDrawer({ chatId, open, onClose, onSkillsChanged }) 
                         <p style={{ margin: 0 }}>⚠️ Skill 加载失败: {error}</p>
                         <div>
                             <button onClick={() => setRetryKey(key => key + 1)} type="button">重试</button>
+                        </div>
+                    </div>
+                ) : allSkills.length === 0 ? (
+                    <div className="skill-card">
+                        <div className="skill-card-info">
+                            <div className="skill-card-name">暂无可挂载技能</div>
+                            <div className="skill-card-desc">先到 Skills 页面创建项目技能，或使用内置技能开始对话。</div>
                         </div>
                     </div>
                 ) : (

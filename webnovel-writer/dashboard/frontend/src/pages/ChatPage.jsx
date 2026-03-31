@@ -30,8 +30,13 @@ export default function ChatPage() {
     const hasChats = chats.length > 0
     const generation = runtimeProfile?.generation || null
     const project = runtimeProfile?.project || null
-    const generationConfigured = Boolean(generation?.configured)
     const generationProvider = generation?.provider || ''
+    const generationConfigured = Boolean(generation?.configured) && generationProvider !== 'local'
+
+    const openSettings = useCallback(() => {
+        if (typeof window === 'undefined') return
+        window.location.hash = '#/settings'
+    }, [])
 
     const loadRuntimeProfile = useCallback(async () => {
         setRuntimeLoading(true)
@@ -99,16 +104,16 @@ export default function ChatPage() {
             }
         }
 
-        if (generationConfigured && generationProvider === 'local') {
+        if (generationProvider === 'local') {
             return {
-                badge: '本地模式',
-                title: '你现在可以直接开始使用 Chat',
-                description: '当前运行在内置本地模式，不需要额外的 API key。回复会基于当前项目上下文给出稳定、可继续推进的写作建议。',
+                badge: '需要迁移设置',
+                title: '本地模式不再直接解锁 Chat',
+                description: '当前运行时仍停留在内置 local provider。请先到 Settings 补齐真实 provider、模型与 API Key，Chat 才会开放输入。',
                 details: [
                     { label: 'Provider', value: 'local' },
-                    { label: 'API Key', value: '不需要' },
+                    { label: 'API Key', value: generation?.api_key_configured ? '已配置' : '未配置' },
                     { label: 'Model', value: generation?.model || 'built-in' },
-                    { label: 'Base URL', value: '内置本地逻辑' },
+                    { label: 'Base URL', value: generation?.base_url || '内置本地逻辑' },
                 ],
             }
         }
@@ -121,7 +126,7 @@ export default function ChatPage() {
         return {
             badge: '需要先完成设置',
             title: '先完成生成服务配置，再开始对话',
-            description: '当前运行时还不能进行真实生成，所以 Chat 暂时不会开放输入。请先在服务端配置生成 provider 和 API key，然后刷新页面。',
+            description: '当前运行时还不能进行真实生成，所以 Chat 暂时不会开放输入。请先在 Settings 中配置 provider 与 API key，再回来开始对话。',
             details: [
                 { label: 'Provider', value: provider },
                 { label: 'API Key', value: apiKey },
@@ -137,25 +142,6 @@ export default function ChatPage() {
             badge={badge}
             description="在同一工作台中管理多轮对话、流式回复和技能挂载。"
         >
-            {!runtimeLoading && !runtimeError && generationConfigured && generationProvider === 'local' ? (
-                <div className="card" style={{ background: '#eefbf3', borderColor: '#2ec27e' }}>
-                    <div className="card-header">
-                        <span className="card-title">✅ 本地模式已就绪</span>
-                        <span className="card-badge badge-green">Local</span>
-                    </div>
-                    <p style={{ margin: 0, color: '#215c39' }}>
-                        当前无需额外配置即可直接开始对话；如果你之后补充 API key，系统仍然可以切换到外部生成模式。
-                    </p>
-                    {project?.title || project?.genre || project?.current_chapter ? (
-                        <div className="chat-project-brief">
-                            {project?.title ? <span>作品：{project.title}</span> : null}
-                            {project?.genre ? <span>类型：{project.genre}</span> : null}
-                            {project?.current_chapter ? <span>当前章节：{project.current_chapter}</span> : null}
-                        </div>
-                    ) : null}
-                </div>
-            ) : null}
-
             <div className="chat-page">
                 <div className="chat-sidebar card">
                     <button className="new-chat-btn" onClick={() => void handleNewChat()} type="button" disabled={!generationConfigured || runtimeLoading}>
@@ -207,6 +193,9 @@ export default function ChatPage() {
                                         ))}
                                     </dl>
                                 ) : null}
+                                <button className="new-chat-btn chat-empty-primary chat-settings-cta" onClick={openSettings} type="button">
+                                    打开 Settings 完成配置
+                                </button>
                             </div>
                         </div>
                     ) : activeChatId ? (
