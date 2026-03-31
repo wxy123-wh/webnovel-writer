@@ -9,7 +9,13 @@ param(
     [switch]$StartDashboard,
     [string]$DashboardHost = "127.0.0.1",
     [int]$DashboardPort = 8765,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [switch]$NoBootstrapIndex,
+    [string[]]$CorsOrigin,
+    [ValidateSet("DEBUG", "INFO", "WARNING", "ERROR")]
+    [string]$LogLevel = "INFO",
+    [switch]$LogJson,
+    [string]$BasicAuth
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +33,61 @@ function Command-Exists {
 function Resolve-AbsolutePath {
     param([string]$PathValue)
     return (Resolve-Path -Path $PathValue).Path
+}
+
+function Assert-CommandExists {
+    param(
+        [string]$Name,
+        [string]$InstallHint
+    )
+    if (-not (Command-Exists $Name)) {
+        throw "$Name is required but was not found in PATH. $InstallHint"
+    }
+}
+
+function Get-FrontendPackageManager {
+    param([string]$FrontendRoot)
+
+    if ((Test-Path (Join-Path $FrontendRoot "pnpm-lock.yaml")) -and (Command-Exists "pnpm")) {
+        return "pnpm"
+    }
+    if ((Test-Path (Join-Path $FrontendRoot "yarn.lock")) -and (Command-Exists "yarn")) {
+        return "yarn"
+    }
+    if (Command-Exists "npm") {
+        return "npm"
+    }
+    if (Command-Exists "pnpm") {
+        return "pnpm"
+    }
+    if (Command-Exists "yarn") {
+        return "yarn"
+    }
+    return $null
+}
+
+function Invoke-FrontendPackageManager {
+    param(
+        [string]$FrontendRoot,
+        [string]$PackageManager,
+        [string[]]$Arguments
+    )
+
+    Push-Location $FrontendRoot
+    try {
+        & $PackageManager @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "Frontend command failed: $PackageManager $($Arguments -join ' ')"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Test-FrontendBuildReady {
+    param([string]$FrontendRoot)
+    $distIndex = Join-Path $FrontendRoot "dist/index.html"
+    return (Test-Path $distIndex)
 }
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -56,6 +117,14 @@ if (Command-Exists "python") {
 } else {
     throw "Python is not available in PATH (python or py)."
 }
+Assert-CommandExists -Name $pythonLauncher -InstallHint "Install Python 3.10+ and ensure `python` or `py` is available."
+
+$frontendRoot = Join-Path $appRoot "dashboard/frontend"
+$frontendPkg = Join-Path $frontendRoot "package.json"
+$frontendPackageManager = $null
+if (Test-Path $frontendPkg) {
+    $frontendPackageManager = Get-FrontendPackageManager -FrontendRoot $frontendRoot
+}
 
 function Invoke-Python {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
@@ -84,32 +153,36 @@ if (-not $SkipInstall) {
     }
 
     if (-not $SkipFrontend) {
-        $frontendRoot = Join-Path $appRoot "dashboard/frontend"
-        $frontendPkg = Join-Path $frontendRoot "package.json"
         if (Test-Path $frontendPkg) {
-            Push-Location $frontendRoot
-            try {
-                Write-Step "Installing frontend dependencies in $frontendRoot"
-                if ((Test-Path "pnpm-lock.yaml") -and (Command-Exists "pnpm")) {
-                    pnpm install
-                } elseif ((Test-Path "yarn.lock") -and (Command-Exists "yarn")) {
-                    yarn install
-                } elseif (Command-Exists "npm") {
-                    npm install
-                } else {
-                    Write-Step "No frontend package manager found; skip frontend install."
-                }
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Frontend dependency install failed."
-                }
-            } finally {
-                Pop-Location
+            if (-not $frontendPackageManager) {
+                throw "Frontend package.json exists but no package manager was found in PATH. Install npm, pnpm, or yarn."
+            }
+            Write-Step "Installing frontend dependencies via $frontendPackageManager"
+            Invoke-FrontendPackageManager -FrontendRoot $frontendRoot -PackageManager $frontendPackageManager -Arguments @("install")
+
+            Write-Step "Building frontend via $frontendPackageManager"
+            if ($frontendPackageManager -eq "yarn") {
+                Invoke-FrontendPackageManager -FrontendRoot $frontendRoot -PackageManager $frontendPackageManager -Arguments @("build")
+            } else {
+                Invoke-FrontendPackageManager -FrontendRoot $frontendRoot -PackageManager $frontendPackageManager -Arguments @("run", "build")
             }
         } else {
-            Write-Step "No frontend package.json found; skip frontend install."
+            Write-Step "No frontend package.json found; skip frontend install/build."
         }
     } else {
-        Write-Step "Skip frontend dependency installation (--SkipFrontend)."
+        Write-Step "Skip frontend dependency installation/build (--SkipFrontend)."
+    }
+}
+
+if ((-not $SkipFrontend) -and (Test-Path $frontendPkg) -and (-not (Test-FrontendBuildReady -FrontendRoot $frontendRoot))) {
+    if (-not $frontendPackageManager) {
+        throw "Frontend assets are missing and no package manager is available to build them."
+    }
+    Write-Step "Frontend assets missing; running build via $frontendPackageManager"
+    if ($frontendPackageManager -eq "yarn") {
+        Invoke-FrontendPackageManager -FrontendRoot $frontendRoot -PackageManager $frontendPackageManager -Arguments @("build")
+    } else {
+        Invoke-FrontendPackageManager -FrontendRoot $frontendRoot -PackageManager $frontendPackageManager -Arguments @("run", "build")
     }
 }
 
@@ -156,16 +229,21 @@ Write-Host "Next steps:" -ForegroundColor Green
 Write-Host '  1) Create project: python -X utf8 webnovel-writer/scripts/webnovel.py init ./webnovel-project "My Book" "Genre"' -ForegroundColor Green
 Write-Host "  2) Bootstrap + smoke: powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot ./webnovel-project -RunSmoke" -ForegroundColor Green
 Write-Host "  3) Follow workflow: running/workflow.md" -ForegroundColor Green
-Write-Host "  4) Optional server: powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot ./webnovel-project -StartDashboard -NoBrowser" -ForegroundColor Green
+Write-Host "  4) Start app: powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot ./webnovel-project -StartDashboard -NoBrowser" -ForegroundColor Green
 
 if ($StartDashboard) {
     if (-not $resolvedProjectRoot) {
         throw "-StartDashboard requires -ProjectRoot"
     }
-    Write-Step "Starting dashboard server"
+    if (-not (Test-FrontendBuildReady -FrontendRoot $frontendRoot)) {
+        throw "Frontend assets are still missing after bootstrap. Re-run without -SkipFrontend or build the dashboard frontend before starting."
+    }
+    Write-Step "Starting dashboard via unified CLI"
     Write-Host (("Dashboard URL: http://{0}:{1}" -f $DashboardHost, $DashboardPort)) -ForegroundColor Green
     $dashboardArgs = @(
-        "-m", "dashboard.server",
+        "-X", "utf8",
+        $cliPath,
+        "dashboard",
         "--project-root", $resolvedProjectRoot,
         "--host", $DashboardHost,
         "--port", $DashboardPort
@@ -173,11 +251,24 @@ if ($StartDashboard) {
     if ($NoBrowser) {
         $dashboardArgs += "--no-browser"
     }
-
-    Push-Location $appRoot
-    try {
-        Invoke-Python @dashboardArgs
-    } finally {
-        Pop-Location
+    if ($NoBootstrapIndex) {
+        $dashboardArgs += "--no-bootstrap-index"
     }
+    foreach ($origin in ($CorsOrigin | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $dashboardArgs += "--cors-origin"
+        $dashboardArgs += $origin
+    }
+    if (-not [string]::IsNullOrWhiteSpace($LogLevel)) {
+        $dashboardArgs += "--log-level"
+        $dashboardArgs += $LogLevel
+    }
+    if ($LogJson) {
+        $dashboardArgs += "--log-json"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($BasicAuth)) {
+        $dashboardArgs += "--basic-auth"
+        $dashboardArgs += $BasicAuth
+    }
+
+    Invoke-Python @dashboardArgs
 }

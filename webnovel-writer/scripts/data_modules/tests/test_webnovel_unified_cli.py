@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import json
 import sqlite3
 import sys
@@ -313,6 +314,93 @@ def test_preflight_json_includes_binding_details(monkeypatch, tmp_path, capsys):
     assert "pointer" in payload["binding"]
     assert "registry" in payload["binding"]
     assert payload["binding"]["project_root"]["ok"] is True
+
+
+def test_dashboard_requires_built_frontend(monkeypatch, tmp_path, capsys):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+    (project_root / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(module, "_resolve_root", lambda _explicit_project_root=None: project_root)
+    monkeypatch.setattr(
+        module,
+        "_check_dashboard_frontend_assets",
+        lambda: {
+            "ok": False,
+            "reason": "frontend_dist_missing",
+            "frontend_root": str(tmp_path / "frontend"),
+            "dist_dir": str(tmp_path / "frontend" / "dist"),
+            "package_manager": "npm",
+            "build_command": ["npm", "install", "&&", "npm", "run", "build"],
+        },
+    )
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("subprocess.run should not be called")))
+
+    args = argparse.Namespace(
+        project_root=str(project_root),
+        host="127.0.0.1",
+        port=8765,
+        no_browser=False,
+        no_bootstrap_index=False,
+        cors_origins=None,
+        log_level="INFO",
+        log_json=False,
+        basic_auth=None,
+    )
+
+    exit_code = module.cmd_dashboard(args)
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "running/init.ps1 -ProjectRoot <PROJECT_ROOT> -StartDashboard" in captured.err
+
+
+def test_dashboard_forwards_server_flags(monkeypatch, tmp_path):
+    module = _load_webnovel_module()
+
+    project_root = (tmp_path / "book").resolve()
+    (project_root / ".webnovel").mkdir(parents=True, exist_ok=True)
+    (project_root / ".webnovel" / "state.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(module, "_resolve_root", lambda _explicit_project_root=None: project_root)
+    monkeypatch.setattr(module, "_check_dashboard_frontend_assets", lambda: {"ok": True})
+
+    called = {}
+
+    def _fake_run(cmd, cwd=None, env=None):
+        called["cmd"] = list(cmd)
+        called["cwd"] = cwd
+        called["env"] = dict(env or {})
+        return argparse.Namespace(returncode=0)
+
+    monkeypatch.setattr(module.subprocess, "run", _fake_run)
+
+    args = argparse.Namespace(
+        project_root=str(project_root),
+        host="0.0.0.0",
+        port=9000,
+        no_browser=True,
+        no_bootstrap_index=True,
+        cors_origins=["http://localhost:9000", "https://example.com"],
+        log_level="DEBUG",
+        log_json=True,
+        basic_auth="writer:secret",
+    )
+
+    exit_code = module.cmd_dashboard(args)
+
+    assert exit_code == 0
+    assert called["cwd"].endswith("webnovel-writer")
+    assert "dashboard.server" in called["cmd"]
+    assert "--no-browser" in called["cmd"]
+    assert "--no-bootstrap-index" in called["cmd"]
+    assert called["cmd"].count("--cors-origin") == 2
+    assert "--log-json" in called["cmd"]
+    assert called["cmd"][called["cmd"].index("--log-level") + 1] == "DEBUG"
+    assert called["cmd"][called["cmd"].index("--basic-auth") + 1] == "writer:secret"
+    assert str(project_root) in called["cmd"]
 
 
 def test_where_fails_with_clear_reason_when_state_json_missing(monkeypatch, tmp_path, capsys):

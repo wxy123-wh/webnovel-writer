@@ -166,3 +166,77 @@ class TestChatAPI:
         get_response = client.get(f"/api/chat/chats/{chat_id}/skills")
         assert get_response.status_code == 200
         assert get_response.json()[0]["name"] == "webnovel-write"
+
+    def test_update_chat_skills_preserves_source(self, client: TestClient):
+        create_response = client.post("/api/chat/chats", json={"title": "Profile Skills"})
+        chat_id = create_response.json()["chat_id"]
+
+        update_response = client.patch(
+            f"/api/chat/chats/{chat_id}/skills",
+            json={"skills": [{"skill_id": "battle", "source": "profile", "enabled": True}]},
+        )
+        assert update_response.status_code == 200
+        payload = update_response.json()
+        assert payload[0]["skill_id"] == "battle"
+        assert payload[0]["source"] == "profile"
+
+    def test_list_workspace_skills_reads_items_registry_shape(self, client: TestClient):
+        project_root = Path(client.app.state.project_root)
+        skills_dir = project_root / ".webnovel" / "skills"
+        skill_dir = skills_dir / "ulw"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# ULW\n\nWorkspace long writing mode", encoding="utf-8")
+        (skills_dir / "registry.json").write_text(
+            '{"schema_version":1,"items":[{"id":"ulw","name":"ULW","description":"Workspace mode","enabled":true}]}',
+            encoding="utf-8",
+        )
+
+        response = client.get("/api/chat/skills")
+        assert response.status_code == 200
+        payload = response.json()
+        workspace_skill = next(item for item in payload if item["skill_id"] == "ulw")
+        assert workspace_skill["source"] == "workspace"
+        assert workspace_skill["name"] == "ULW"
+
+    def test_send_message_includes_workspace_skill_markdown(self, client: TestClient, monkeypatch: pytest.MonkeyPatch):
+        project_root = Path(client.app.state.project_root)
+        skills_dir = project_root / ".webnovel" / "skills"
+        skill_dir = skills_dir / "ulw"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# ULW\n\n必须输出长篇细腻正文。", encoding="utf-8")
+        (skills_dir / "registry.json").write_text(
+            '{"schema_version":1,"items":[{"id":"ulw","name":"ULW","description":"Workspace mode","enabled":true}]}',
+            encoding="utf-8",
+        )
+
+        create_response = client.post("/api/chat/chats", json={"title": "Workspace Context"})
+        chat_id = create_response.json()["chat_id"]
+
+        update_response = client.patch(
+            f"/api/chat/chats/{chat_id}/skills",
+            json={"skills": [{"skill_id": "ulw", "source": "workspace", "enabled": True}]},
+        )
+        assert update_response.status_code == 200
+
+        captured_messages: list[list[dict[str, str]]] = []
+
+        def fake_stream_chat(self, *, messages, message_id, chat_id):
+            captured_messages.append(messages)
+            return iter(
+                [
+                    f"event: message_start\ndata: {{\"message_id\": \"{message_id}\", \"chat_id\": \"{chat_id}\"}}\n\n",
+                    'event: text_delta\ndata: {"delta": "收到"}\n\n',
+                    f"event: message_complete\ndata: {{\"message_id\": \"{message_id}\", \"usage\": {{}}}}\n\n",
+                ]
+            )
+
+        monkeypatch.setattr(
+            "dashboard.services.chat.streaming.ChatStreamAdapter.stream_chat",
+            fake_stream_chat,
+        )
+
+        send_response = client.post(f"/api/chat/chats/{chat_id}/messages", json={"content": "开始写"})
+        assert send_response.status_code == 200
+        assert captured_messages
+        assert "[workspace:ulw]" in captured_messages[0][0]["content"]
+        assert "必须输出长篇细腻正文。" in captured_messages[0][0]["content"]

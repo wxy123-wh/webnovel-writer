@@ -9,7 +9,7 @@ function formatTime(isoStr) {
 }
 
 function TextPart({ payload }) {
-    return <div className="msg-text">{payload.content || ''}</div>
+    return <div className="msg-text">{payload.text || payload.content || ''}</div>
 }
 
 function ToolCallCard({ payload }) {

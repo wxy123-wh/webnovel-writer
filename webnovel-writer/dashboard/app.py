@@ -1129,7 +1129,12 @@ def create_app(
         def no_frontend():
             return HTMLResponse(
                 "<h2>Webnovel Dashboard API is running</h2>"
-                "<p>前端尚未构建。请先在 <code>dashboard/frontend</code> 目录执行 <code>npm run build</code>。</p>"
+                "<p>前端尚未构建。请回到仓库根目录，使用规范启动命令："
+                "<code>powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot &lt;PROJECT_ROOT&gt; -StartDashboard</code>。"
+                "</p>"
+                "<p>如果你已经完成前端依赖安装，也可以使用："
+                "<code>python -X utf8 webnovel-writer/scripts/webnovel.py dashboard --project-root &lt;PROJECT_ROOT&gt;</code>。"
+                "</p>"
                 '<p>API 文档：<a href="/docs">/docs</a></p>'
             )
 

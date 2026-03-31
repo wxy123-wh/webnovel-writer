@@ -12,12 +12,20 @@ class ChatSkillRegistry:
         self.project_root = Path(project_root) if project_root is not None else None
         self._base = Path(__file__).resolve().parents[2]
 
-    def get_skill_content(self, skill_id: str) -> str | None:
-        skill_md = self._base / "skills" / skill_id / "SKILL.md"
-        if not skill_md.is_file():
+    def get_skill_content(self, skill_id: str, *, source: str = "system") -> str | None:
+        content_path: Path | None = None
+        if source == "system":
+            content_path = self._base / "skills" / skill_id / "SKILL.md"
+        elif source == "workspace" and self.project_root is not None:
+            content_path = self.project_root / ".webnovel" / "skills" / skill_id / "SKILL.md"
+        elif source == "profile":
+            content_path = self._base / "scripts" / "codex_skill_profiles" / skill_id / "README.md"
+
+        if content_path is None or not content_path.is_file():
             return None
+
         try:
-            return skill_md.read_text(encoding="utf-8")
+            return content_path.read_text(encoding="utf-8")
         except OSError:
             return None
 
@@ -62,7 +70,7 @@ class ChatSkillRegistry:
             if registry_path.is_file():
                 try:
                     data = json.loads(registry_path.read_text(encoding="utf-8"))
-                    items = data if isinstance(data, list) else data.get("skills", [])
+                    items = data if isinstance(data, list) else data.get("items", data.get("skills", []))
                     for item in items:
                         if not isinstance(item, dict):
                             continue

@@ -215,8 +215,7 @@ class ChatOrchestrationService:
             registry_item = registry_by_key.get((source, skill_id)) or registry_by_id.get(skill_id) or {}
             header = f"[{source}:{skill_id}]"
             full_content = ""
-            if source == "system":
-                full_content = (self.registry.get_skill_content(skill_id) or "").strip()
+            full_content = (self.registry.get_skill_content(skill_id, source=source) or "").strip()
 
             description = registry_item.get("description")
             short_content = description.strip() if isinstance(description, str) else ""

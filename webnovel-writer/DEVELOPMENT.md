@@ -11,29 +11,26 @@
 ## 启动方式
 
 ```bash
-# 激活虚拟环境
-.venv\Scripts\activate
+# 推荐：从仓库根目录一键 bootstrap + 启动
+powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot ./webnovel-project -StartDashboard
 
-# 启动 Dashboard（自动检测项目路径）
-python -m dashboard.server
-
-# 指定项目路径启动
-python -m dashboard.server --project-root D:\path\to\novel-project
+# 已经完成依赖和前端构建时，可使用统一 CLI 包装入口
+python -X utf8 webnovel-writer/scripts/webnovel.py dashboard --project-root D:\path\to\novel-project
 
 # 生产部署（指定 CORS 来源）
-python -m dashboard.server --project-root /path/to/project --cors-origin "https://yourdomain.com"
+python -X utf8 webnovel-writer/scripts/webnovel.py dashboard --project-root /path/to/project --cors-origin "https://yourdomain.com"
 
 # 非本地部署（启用 Basic Auth）
-python -m dashboard.server --project-root /path/to/project --basic-auth writer:change-me --cors-origin "https://yourdomain.com"
+python -X utf8 webnovel-writer/scripts/webnovel.py dashboard --project-root /path/to/project --basic-auth writer:change-me --cors-origin "https://yourdomain.com"
 
 # 不自动打开浏览器
-python -m dashboard.server --no-browser
+python -X utf8 webnovel-writer/scripts/webnovel.py dashboard --project-root /path/to/project --no-browser
 ```
 
 ### 前端构建
 
 ```bash
-cd dashboard/frontend
+cd webnovel-writer/dashboard/frontend
 npm install
 npm run build          # ✅ 唯一前端构建入口（vite build）
 ```

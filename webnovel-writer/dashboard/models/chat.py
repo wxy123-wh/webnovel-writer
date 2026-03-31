@@ -45,6 +45,7 @@ class StreamMessageRequest(BaseModel):
 class SkillMount(BaseModel):
     skill_id: str
     enabled: bool = True
+    source: str = "system"
 
 
 class UpdateChatSkillsRequest(BaseModel):

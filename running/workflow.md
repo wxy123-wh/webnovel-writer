@@ -58,7 +58,7 @@ State transition rules:
 1. Run bootstrap:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File running/init.ps1 -IncludeDev -SkipFrontend
+powershell -ExecutionPolicy Bypass -File running/init.ps1 -IncludeDev
 ```
 
 2. If no project root exists, create one:
@@ -220,12 +220,12 @@ All conditions must hold:
 
 ```powershell
 # Baseline bootstrap
-powershell -ExecutionPolicy Bypass -File running/init.ps1 -IncludeDev -SkipFrontend
+powershell -ExecutionPolicy Bypass -File running/init.ps1 -IncludeDev
 
 # Bind project and smoke
 powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot <PROJECT_ROOT> -RunSmoke
 
-# Optional: start dashboard from harness script
+# Canonical app startup from repo root
 powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot <PROJECT_ROOT> -StartDashboard
 
 # Frontend gate: build + run for Playwright checks

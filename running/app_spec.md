@@ -37,7 +37,7 @@ Out of scope:
 
 1. Harness bootstrap: `running/init.ps1`
 2. Unified CLI: `webnovel-writer/scripts/webnovel.py`
-3. Dashboard runtime: `python -m dashboard.server` from `webnovel-writer/`
+3. Dashboard runtime: `python -X utf8 webnovel-writer/scripts/webnovel.py dashboard --project-root <PROJECT_ROOT>`
 4. Stateless loop runner: `running/ralph-loop.ps1`
 
 ## 6. Success Metrics

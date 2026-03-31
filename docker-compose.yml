@@ -1,6 +1,8 @@
 # P2-A 修复：Webnovel Dashboard - Docker Compose 配置
 # 
 # 用法：
+#   cp .env.example .env
+#   # 编辑 .env 中的 NOVEL_PROJECT_PATH 为你的小说项目绝对路径
 #   docker compose up -d
 #   docker compose logs -f
 #   docker compose down
@@ -18,16 +20,18 @@ services:
       - "8765:8765"
 
     volumes:
-      # 挂载你的小说项目目录（只读推荐）
-      - ${NOVEL_PROJECT_PATH:-./novel-project}:/project:ro
+      # 挂载你的小说项目目录（必须显式配置，避免误挂载仓库内占位目录）
+      - ${NOVEL_PROJECT_PATH:?Set NOVEL_PROJECT_PATH in .env to an absolute novel project path}:/project:ro
 
     environment:
       # 可覆盖的环境变量
       - WEBNOVEL_LOG_LEVEL=${LOG_LEVEL:-INFO}
       - WEBNOVEL_DASHBOARD_BASIC_AUTH=${WEBNOVEL_DASHBOARD_BASIC_AUTH:-}
 
-    # 覆盖默认 CMD，添加 CORS 和 JSON 日志参数
+    # 覆盖默认 CMD，添加生产默认参数
     command:
+      - --log-level
+      - ${LOG_LEVEL:-INFO}
       - --log-json
       - --cors-origin
       - ${CORS_ORIGIN:-http://localhost:8765}

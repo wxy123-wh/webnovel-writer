@@ -44,9 +44,9 @@ export default function SkillDrawer({ chatId, open, onClose }) {
         }
     }, [loadDrawerData, open, retryKey])
 
-    const toggleSkill = useCallback(async (skillId, enable) => {
+    const toggleSkill = useCallback(async (skill, enable) => {
         if (!chatId) return
-        await updateChatSkills(chatId, [{ skill_id: skillId, enabled: enable }])
+        await updateChatSkills(chatId, [{ skill_id: skill.skill_id, source: skill.source, enabled: enable }])
         const nextSkills = await getChatSkills(chatId)
         setChatSkills(nextSkills)
     }, [chatId])
@@ -71,11 +71,13 @@ export default function SkillDrawer({ chatId, open, onClose }) {
                     </div>
                 ) : (
                     allSkills.map(skill => {
-                        const mounted = chatSkills.find(item => item.skill_id === skill.skill_id)
+                        const mounted = chatSkills.find(
+                            item => item.skill_id === skill.skill_id && item.source === skill.source,
+                        )
                         const isOn = mounted?.enabled ?? false
 
                         return (
-                            <div key={skill.skill_id} className={`skill-card ${isOn ? 'active' : ''}`}>
+                            <div key={`${skill.source}:${skill.skill_id}`} className={`skill-card ${isOn ? 'active' : ''}`}>
                                 <div className="skill-card-info">
                                     <div className="skill-card-name">{skill.name}</div>
                                     <div className="skill-card-desc">{skill.description}</div>
@@ -84,7 +86,7 @@ export default function SkillDrawer({ chatId, open, onClose }) {
                                 <button
                                     className={`skill-toggle ${isOn ? 'on' : 'off'}`}
                                     onClick={() => {
-                                        void toggleSkill(skill.skill_id, !isOn)
+                                        void toggleSkill(skill, !isOn)
                                     }}
                                     type="button"
                                 >
