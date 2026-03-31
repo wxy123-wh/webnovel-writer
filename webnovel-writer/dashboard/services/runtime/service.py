@@ -11,7 +11,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from scripts.data_modules.config import DataModulesConfig
+from scripts.data_modules.config import read_project_env_values
+
+OPENAI_BASE_URL_DEFAULT = "https://api.openai.com/v1"
+OPENAI_MODEL_DEFAULT = "gpt-4o-mini"
+LOCAL_PROVIDER = "local"
+LOCAL_MODEL = "local-assist-v1"
 
 DEFAULT_WORKSPACE_ID = "workspace-default"
 TARGET_CONTEXT_DIR = ".codex"
@@ -195,22 +200,57 @@ def _is_project_root(path: Path) -> bool:
 
 
 def _collect_generation_state(*, project_root: Path) -> dict[str, Any]:
-    config = DataModulesConfig(project_root=project_root)
-    provider = str(getattr(config, "generation_api_type", "local") or "local").strip() or "local"
-    api_key = str(getattr(config, "generation_api_key", "") or "").strip()
-    configured = provider == "local" or (provider != "stub" and bool(api_key))
-    model = str(getattr(config, "generation_model", "") or "")
-    base_url = str(getattr(config, "generation_base_url", "") or "")
-    if provider == "local":
-        model = "local-assist-v1"
+    settings = _resolve_generation_settings(project_root=project_root)
+    provider = settings["provider"]
+    api_key = settings["api_key"]
+    configured = provider not in {"", LOCAL_PROVIDER, "stub"} and bool(api_key)
+    model = settings["model"]
+    base_url = settings["base_url"]
+    if provider == LOCAL_PROVIDER:
+        model = LOCAL_MODEL
         base_url = ""
     return {
         "provider": provider,
         "configured": configured,
+        "skill_draft_available": configured,
         "api_key_configured": bool(api_key),
         "model": model,
         "base_url": base_url,
     }
+
+
+def _resolve_generation_settings(*, project_root: Path) -> dict[str, str]:
+    project_env = read_project_env_values(project_root)
+    api_key = _read_generation_value(project_env, "GENERATION_API_KEY", aliases=("OPENAI_API_KEY",))
+    provider = _read_generation_value(project_env, "GENERATION_API_TYPE")
+    if not provider:
+        provider = "openai" if api_key else LOCAL_PROVIDER
+
+    model = _read_generation_value(project_env, "GENERATION_MODEL", aliases=("OPENAI_MODEL",))
+    if not model:
+        model = OPENAI_MODEL_DEFAULT if api_key else LOCAL_MODEL
+
+    base_url = _read_generation_value(project_env, "GENERATION_BASE_URL", aliases=("OPENAI_BASE_URL",))
+    if not base_url and provider != LOCAL_PROVIDER:
+        base_url = OPENAI_BASE_URL_DEFAULT
+
+    return {
+        "provider": provider,
+        "api_key": api_key,
+        "model": model,
+        "base_url": base_url,
+    }
+
+
+def _read_generation_value(project_env: dict[str, str], key: str, aliases: tuple[str, ...] = ()) -> str:
+    for candidate in (key, *aliases):
+        env_value = str(os.environ.get(candidate, "") or "").strip()
+        if env_value:
+            return env_value
+        project_value = str(project_env.get(candidate, "") or "").strip()
+        if project_value:
+            return project_value
+    return ""
 
 
 def _collect_project_summary(*, project_root: Path) -> dict[str, str]:

@@ -8,6 +8,7 @@ import asyncio
 import base64
 import binascii
 import json
+import re
 import secrets
 import sqlite3
 from contextlib import asynccontextmanager, closing, suppress
@@ -20,9 +21,11 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Streamin
 from fastapi.staticfiles import StaticFiles
 
 from .models.common import ApiErrorResponse
+from .models.skills import CreateSkillRequest, SkillDraftRequest, SkillDraftResponse
 from .path_guard import safe_resolve
 from .routers.chat import router as chat_router
-from .routers import runtime_router
+from .routers import hierarchy_router, runtime_router
+from .services.runtime import service as runtime_service_module
 from .watcher import FileWatcher
 
 # ---------------------------------------------------------------------------
@@ -33,6 +36,13 @@ from .watcher import FileWatcher
 _watcher = FileWatcher()
 
 STATIC_DIR = Path(__file__).parent / "frontend" / "dist"
+ENV_ASSIGNMENT_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=.*$")
+GENERATION_ENV_KEYS = (
+    "GENERATION_API_TYPE",
+    "GENERATION_BASE_URL",
+    "GENERATION_MODEL",
+    "GENERATION_API_KEY",
+)
 
 READ_ERROR_RESPONSES = {
     404: {"model": ApiErrorResponse, "description": "Resource not found."},
@@ -317,9 +327,8 @@ def create_app(
 
         return JSONResponse(status_code=500, content=payload)
 
-    # M1 阶段：仅保留只读路由
-    # 写接口已全部删除，由 CLI 统一入口 `webnovel codex` 承载
     app.include_router(runtime_router)
+    app.include_router(hierarchy_router)
     app.include_router(chat_router)
 
     # ===========================================================
@@ -880,7 +889,7 @@ def create_app(
 
         root = _get_project_root_from_app(app)
         registry = ChatSkillRegistry(root)
-        all_items = registry.list_all()
+        all_items = registry.list_workspace()
 
         filtered = all_items
         if enabled is not None:
@@ -894,6 +903,80 @@ def create_app(
             "items": paginated,
             "total": total,
         }
+
+    @app.post("/api/skills", status_code=201)
+    def create_workspace_skill(body: CreateSkillRequest):
+        from core.skill_system.chat_skill_registry import (
+            ChatSkillRegistry,
+            WorkspaceSkillConflictError,
+            WorkspaceSkillValidationError,
+        )
+
+        root = _get_project_root_from_app(app)
+        registry = ChatSkillRegistry(root)
+        try:
+            return registry.create_workspace_skill(
+                skill_id=body.skill_id,
+                name=body.name,
+                description=body.description,
+                instruction_template=body.instruction_template,
+            )
+        except WorkspaceSkillValidationError as exc:
+            _raise_api_error(
+                400,
+                error_code="invalid_skill_payload",
+                message="Skill payload is invalid.",
+                details={"field_errors": exc.field_errors},
+            )
+        except WorkspaceSkillConflictError as exc:
+            _raise_api_error(
+                409,
+                error_code="skill_conflict",
+                message="A skill with this id already exists.",
+                details={"skill_id": exc.skill_id},
+            )
+
+    @app.post("/api/skills/draft", response_model=SkillDraftResponse)
+    def generate_workspace_skill_draft(body: SkillDraftRequest):
+        from .services.chat import ChatOrchestrationService
+
+        root = _get_project_root_from_app(app)
+        service = ChatOrchestrationService(root)
+        try:
+            return SkillDraftResponse.model_validate(
+                service.generate_skill_draft(
+                    body.prompt,
+                    body.current_draft.model_dump(),
+                )
+            )
+        except service.WorkflowChatError as exc:
+            _raise_api_error(
+                exc.status_code,
+                error_code=exc.error_code,
+                message=exc.message,
+                details=exc.details,
+            )
+
+    @app.delete("/api/skills/{skill_id}", status_code=204)
+    def delete_workspace_skill(skill_id: str):
+        from core.agent_runtime.chat_service import ChatService
+        from core.skill_system.chat_skill_registry import ChatSkillRegistry, WorkspaceSkillNotFoundError
+
+        root = _get_project_root_from_app(app)
+        registry = ChatSkillRegistry(root)
+        try:
+            registry.delete_workspace_skill(skill_id)
+        except WorkspaceSkillNotFoundError as exc:
+            _raise_api_error(
+                404,
+                error_code="skill_not_found",
+                message="Skill was not found.",
+                details={"skill_id": exc.skill_id},
+            )
+
+        chat_service = ChatService(root)
+        chat_service.repository.unmount_skill_everywhere(skill_id.strip().lower(), source="workspace")
+        return None
 
     # ===========================================================
     # API：文档浏览（正文/大纲/设定集 —— 只读）
@@ -1010,6 +1093,64 @@ def create_app(
         if not settings_dir.is_dir():
             return {"status": "ok", "nodes": []}
         return {"status": "ok", "nodes": _walk_tree(settings_dir, root, max_depth=20)}
+
+    @app.get("/api/settings/provider")
+    def settings_provider(workspace_id: str = "", project_root: str = ""):
+        del workspace_id, project_root
+        root = _get_project_root_from_app(app)
+        return runtime_service_module._collect_generation_state(project_root=root)
+
+    @app.patch("/api/settings/provider")
+    async def settings_provider_update(request: Request, workspace_id: str = "", project_root: str = ""):
+        del workspace_id, project_root
+        root = _get_project_root_from_app(app)
+        payload: Any = {}
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            _raise_api_error(
+                400,
+                error_code="invalid_json_body",
+                message="请求体必须是合法 JSON",
+            )
+
+        if not isinstance(payload, dict):
+            _raise_api_error(
+                400,
+                error_code="invalid_request_body",
+                message="请求体必须是 JSON 对象",
+            )
+
+        provider = str(payload.get("provider") or "").strip()
+        if not provider:
+            _raise_api_error(
+                400,
+                error_code="provider_required",
+                message="provider 不能为空",
+            )
+        if provider.lower() in {"local", "stub"}:
+            _raise_api_error(
+                400,
+                error_code="provider_not_supported",
+                message="Web 端只支持配置真实 provider，local/stub 已不再提供。",
+                details={"provider": provider},
+            )
+
+        updates: dict[str, str | None] = {
+            "GENERATION_API_TYPE": provider,
+            "GENERATION_BASE_URL": _normalize_optional_env_value(payload.get("base_url")),
+            "GENERATION_MODEL": _normalize_optional_env_value(payload.get("model")),
+        }
+
+        clear_api_key = bool(payload.get("clear_api_key"))
+        api_key = payload.get("api_key") if isinstance(payload.get("api_key"), str) else ""
+        if clear_api_key:
+            updates["GENERATION_API_KEY"] = None
+        elif api_key:
+            updates["GENERATION_API_KEY"] = api_key
+
+        _write_project_env_values(root, updates)
+        return runtime_service_module._collect_generation_state(project_root=root)
 
     @app.get("/api/settings/files/read")
     def settings_file_read(path: str, workspace_id: str = "", project_root: str = ""):
@@ -1144,6 +1285,61 @@ def create_app(
 # ---------------------------------------------------------------------------
 # 辅助函数
 # ---------------------------------------------------------------------------
+
+def _get_project_root_from_app(app: FastAPI) -> Path:
+    root = getattr(app.state, "project_root", None)
+    if isinstance(root, Path) and root.is_dir():
+        return root
+    recovered = _resolve_project_root_from_pointer()
+    if recovered is not None:
+        app.state.project_root = recovered
+        return recovered
+    _raise_api_error(
+        503,
+        error_code="project_root_unavailable",
+        message="当前未绑定小说项目，请重新通过规范启动命令启动 Dashboard。",
+    )
+    raise AssertionError("unreachable")
+
+
+def _normalize_optional_env_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return str(value).strip() or None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _write_project_env_values(project_root: Path, updates: dict[str, str | None]) -> None:
+    env_path = project_root / ".env"
+    existing_lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    remaining_updates = {key: value for key, value in updates.items() if key in GENERATION_ENV_KEYS}
+    next_lines: list[str] = []
+
+    for line in existing_lines:
+        match = ENV_ASSIGNMENT_RE.match(line)
+        if not match:
+            next_lines.append(line)
+            continue
+
+        key = match.group(1)
+        if key not in remaining_updates:
+            next_lines.append(line)
+            continue
+
+        value = remaining_updates.pop(key)
+        if value is not None:
+            next_lines.append(f"{key}={value}")
+
+    for key, value in remaining_updates.items():
+        if value is not None:
+            next_lines.append(f"{key}={value}")
+
+    content = "\n".join(next_lines)
+    if next_lines:
+        content += "\n"
+    env_path.write_text(content, encoding="utf-8")
 
 # P0-C 修复：添加 max_depth 参数防止深层目录引发 RecursionError
 def _walk_tree(folder: Path, root: Path, max_depth: int = 20, _current_depth: int = 0) -> list[dict]:

@@ -118,6 +118,16 @@ export async function fetchSettingsFileTree(options = {}) {
     }
 }
 
+function normalizeProviderSettings(payload) {
+    return {
+        provider: typeof payload?.provider === 'string' ? payload.provider : '',
+        base_url: typeof payload?.base_url === 'string' ? payload.base_url : '',
+        model: typeof payload?.model === 'string' ? payload.model : '',
+        api_key_configured: Boolean(payload?.api_key_configured),
+        configured: Boolean(payload?.configured),
+    }
+}
+
 export async function readSettingsFile(options = {}) {
     const workspace = buildWorkspace(options)
     const filePath = typeof options.path === 'string' ? options.path.trim() : ''
@@ -157,4 +167,28 @@ export async function listSettingDictionary(options = {}) {
         items,
         total: Number.isFinite(payload?.total) ? payload.total : items.length,
     }
+}
+
+export async function fetchProviderSettings(options = {}) {
+    const payload = await requestJSON('/api/settings/provider', {
+        signal: options.signal,
+    })
+
+    return normalizeProviderSettings(payload)
+}
+
+export async function updateProviderSettings(options = {}) {
+    const payload = await requestJSON('/api/settings/provider', {
+        method: 'PATCH',
+        body: {
+            provider: typeof options.provider === 'string' ? options.provider.trim() : '',
+            base_url: typeof options.base_url === 'string' ? options.base_url.trim() : '',
+            model: typeof options.model === 'string' ? options.model.trim() : '',
+            api_key: typeof options.api_key === 'string' ? options.api_key : '',
+            clear_api_key: Boolean(options.clear_api_key),
+        },
+        signal: options.signal,
+    })
+
+    return normalizeProviderSettings(payload)
 }

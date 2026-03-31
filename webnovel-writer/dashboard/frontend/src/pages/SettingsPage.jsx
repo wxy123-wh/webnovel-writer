@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PageScaffold from '../components/PageScaffold.jsx'
 import {
+    fetchProviderSettings,
     fetchSettingsFileTree,
     isMockResponse,
     listSettingDictionary,
     readSettingsFile,
+    updateProviderSettings,
 } from '../api/settings.js'
+
+const DEFAULT_PROVIDER_FORM = {
+    provider: '',
+    base_url: '',
+    model: '',
+    api_key: '',
+    clear_api_key: false,
+}
 
 const LAYOUT_STYLE = {
     display: 'grid',
@@ -113,92 +123,216 @@ function TreeNodeList({ nodes, selectedPath, onSelect, depth = 0 }) {
     )
 }
 
-export default function SettingsPage() {
-    const [errorMessage, setErrorMessage] = useState('')
-    const [fileNodes, setFileNodes] = useState([])
-    const [dictionaryItems, setDictionaryItems] = useState([])
-    const [selectedPath, setSelectedPath] = useState('')
-    const [selectedContent, setSelectedContent] = useState('')
-    const [loadingTree, setLoadingTree] = useState(true)
-    const [loadingDictionary, setLoadingDictionary] = useState(true)
-    const [loadingContent, setLoadingContent] = useState(false)
-    const [modeTag, setModeTag] = useState('api')
+function ProviderSettingsPanel() {
+    const [providerState, setProviderState] = useState(null)
+    const [formState, setFormState] = useState(DEFAULT_PROVIDER_FORM)
+    const [loadingProvider, setLoadingProvider] = useState(true)
+    const [savingProvider, setSavingProvider] = useState(false)
+    const [providerError, setProviderError] = useState('')
+    const [providerNotice, setProviderNotice] = useState('')
 
-    const setPageError = useCallback(error => {
-        setModeTag('error')
-        setErrorMessage(error?.message || '请求失败，请稍后重试')
+    const syncForm = useCallback(payload => {
+        setProviderState(payload)
+        setFormState({
+            provider: payload?.provider || '',
+            base_url: payload?.base_url || '',
+            model: payload?.model || '',
+            api_key: '',
+            clear_api_key: false,
+        })
     }, [])
 
-    const refreshDictionary = useCallback(async () => {
-        setLoadingDictionary(true)
+    const loadProviderSettings = useCallback(async () => {
+        setLoadingProvider(true)
+        setProviderError('')
         try {
-            const response = await listSettingDictionary({ limit: 200, offset: 0 })
-            setDictionaryItems(Array.isArray(response.items) ? response.items : [])
-            setErrorMessage('')
-            setModeTag(isMockResponse(response) ? 'mock' : 'api')
+            const response = await fetchProviderSettings()
+            syncForm(response)
         } catch (error) {
-            setPageError(error)
+            setProviderError(error?.message || '读取 provider 配置失败')
         } finally {
-            setLoadingDictionary(false)
+            setLoadingProvider(false)
         }
-    }, [setPageError])
-
-    const readFile = useCallback(async path => {
-        if (!path) {
-            setSelectedContent('')
-            return
-        }
-
-        setLoadingContent(true)
-        try {
-            const response = await readSettingsFile({ path })
-            setSelectedPath(path)
-            setSelectedContent(response.content || '')
-            setErrorMessage('')
-            setModeTag(isMockResponse(response) ? 'mock' : 'api')
-        } catch (error) {
-            setPageError(error)
-        } finally {
-            setLoadingContent(false)
-        }
-    }, [setPageError])
-
-    const refreshTree = useCallback(async () => {
-        setLoadingTree(true)
-        try {
-            const response = await fetchSettingsFileTree()
-            const nodes = Array.isArray(response.nodes) ? response.nodes : []
-            setFileNodes(nodes)
-            setErrorMessage('')
-            setModeTag(isMockResponse(response) ? 'mock' : 'api')
-            const initialPath = selectedPath || collectFirstFilePath(nodes)
-            if (initialPath) {
-                await readFile(initialPath)
-            }
-        } catch (error) {
-            setPageError(error)
-        } finally {
-            setLoadingTree(false)
-        }
-    }, [readFile, selectedPath, setPageError])
+    }, [syncForm])
 
     useEffect(() => {
-        void Promise.all([refreshTree(), refreshDictionary()])
-    }, [refreshDictionary, refreshTree])
+        void loadProviderSettings()
+    }, [loadProviderSettings])
 
-    const dictionaryBadge = useMemo(() => {
-        if (loadingDictionary) {
-            return '词典加载中'
-        }
-        return `${dictionaryItems.length} 条`
-    }, [dictionaryItems.length, loadingDictionary])
+    const configuredBadge = providerState?.configured ? '已配置' : '待配置'
+    const apiKeyBadge = providerState?.api_key_configured ? 'API Key 已保存' : 'API Key 未保存'
 
     return (
-        <PageScaffold
-            title="设定集"
-            badge="Settings & Dictionary"
-            description="[只读展示模式] 查看设定文件和词典条目。编辑操作请通过 Codex 直接修改文件。"
-        >
+        <>
+            <div className="card settings-provider-card">
+                <div className="card-header">
+                    <div>
+                        <span className="card-title">Provider 配置</span>
+                        <p className="settings-panel-intro">在这里配置真实生成服务。Chat 只有在 provider 与密钥都准备好后才会开放。</p>
+                    </div>
+                    <div className="settings-provider-badges">
+                        <span className={`card-badge ${providerState?.configured ? 'badge-green' : 'badge-amber'}`}>{configuredBadge}</span>
+                        <span className={`card-badge ${providerState?.api_key_configured ? 'badge-blue' : 'badge-amber'}`}>{apiKeyBadge}</span>
+                    </div>
+                </div>
+
+                {loadingProvider ? <p className="settings-panel-copy">正在读取当前 provider 配置...</p> : null}
+
+                {!loadingProvider ? (
+                    <form
+                        className="settings-provider-form"
+                        onSubmit={async event => {
+                            event.preventDefault()
+                            setSavingProvider(true)
+                            setProviderError('')
+                            setProviderNotice('')
+                            try {
+                                const response = await updateProviderSettings(formState)
+                                syncForm(response)
+                                setProviderNotice(response.configured
+                                    ? 'Provider 配置已保存，Chat 现在可以重新检查运行时状态。'
+                                    : 'Provider 配置已保存，但当前仍未满足 Chat 解锁条件。')
+                            } catch (error) {
+                                setProviderError(error?.message || '保存 provider 配置失败')
+                            } finally {
+                                setSavingProvider(false)
+                            }
+                        }}
+                    >
+                        <div className="settings-form-grid">
+                            <label className="settings-field">
+                                <span className="settings-field-label">Provider</span>
+                                <input
+                                    className="settings-input"
+                                    name="provider"
+                                    placeholder="例如 openai / openrouter / anthropic"
+                                    value={formState.provider}
+                                    onChange={event => setFormState(prev => ({ ...prev, provider: event.target.value }))}
+                                />
+                            </label>
+
+                            <label className="settings-field">
+                                <span className="settings-field-label">Model</span>
+                                <input
+                                    className="settings-input"
+                                    name="model"
+                                    placeholder="例如 gpt-4.1-mini"
+                                    value={formState.model}
+                                    onChange={event => setFormState(prev => ({ ...prev, model: event.target.value }))}
+                                />
+                            </label>
+
+                            <label className="settings-field settings-field-wide">
+                                <span className="settings-field-label">Base URL</span>
+                                <input
+                                    className="settings-input"
+                                    name="base_url"
+                                    placeholder="https://api.openai.com/v1"
+                                    value={formState.base_url}
+                                    onChange={event => setFormState(prev => ({ ...prev, base_url: event.target.value }))}
+                                />
+                            </label>
+
+                            <label className="settings-field settings-field-wide">
+                                <span className="settings-field-label">API Key</span>
+                                <input
+                                    className="settings-input"
+                                    name="api_key"
+                                    type="password"
+                                    placeholder={providerState?.api_key_configured ? '已保存，如需轮换请重新输入' : '输入新的 API Key'}
+                                    value={formState.api_key}
+                                    onChange={event => setFormState(prev => ({
+                                        ...prev,
+                                        api_key: event.target.value,
+                                        clear_api_key: false,
+                                    }))}
+                                />
+                            </label>
+                        </div>
+
+                        <label className="settings-checkbox-row">
+                            <input
+                                type="checkbox"
+                                checked={formState.clear_api_key}
+                                onChange={event => setFormState(prev => ({
+                                    ...prev,
+                                    clear_api_key: event.target.checked,
+                                    api_key: event.target.checked ? '' : prev.api_key,
+                                }))}
+                            />
+                            <span>清除当前已保存的 API Key</span>
+                        </label>
+
+                        <div className="settings-provider-summary">
+                            <div className="settings-provider-summary-item">
+                                <span>当前 Provider</span>
+                                <strong>{providerState?.provider || '未设置'}</strong>
+                            </div>
+                            <div className="settings-provider-summary-item">
+                                <span>当前 Model</span>
+                                <strong>{providerState?.model || '未设置'}</strong>
+                            </div>
+                            <div className="settings-provider-summary-item">
+                                <span>当前 Base URL</span>
+                                <strong>{providerState?.base_url || '默认地址'}</strong>
+                            </div>
+                        </div>
+
+                        {providerNotice ? <div className="settings-notice settings-notice-success">{providerNotice}</div> : null}
+                        {providerError ? <div className="settings-notice settings-notice-error">{providerError}</div> : null}
+
+                        <div className="settings-provider-actions">
+                            <button className="page-btn" type="button" onClick={() => void loadProviderSettings()} disabled={loadingProvider || savingProvider}>
+                                重新读取
+                            </button>
+                            <button className="new-chat-btn settings-save-btn" type="submit" disabled={savingProvider}>
+                                {savingProvider ? '保存中...' : '保存配置'}
+                            </button>
+                        </div>
+                    </form>
+                ) : null}
+            </div>
+
+            <div className="card settings-provider-card settings-provider-help-card">
+                <div className="card-header">
+                    <span className="card-title">接入说明</span>
+                    <span className="card-badge badge-purple">Provider</span>
+                </div>
+                <div className="settings-provider-help-grid">
+                    <div className="settings-provider-help-item">
+                        <strong>1. 选择服务</strong>
+                        <p>填写 provider 名称与模型标识，保持与后端实际接入一致。</p>
+                    </div>
+                    <div className="settings-provider-help-item">
+                        <strong>2. 补充地址</strong>
+                        <p>如果不是默认官方地址，再补充 Base URL，避免请求落到错误网关。</p>
+                    </div>
+                    <div className="settings-provider-help-item">
+                        <strong>3. 保存后返回 Chat</strong>
+                        <p>保存成功后回到 Chat，页面会重新根据运行时配置决定是否解锁输入。</p>
+                    </div>
+                </div>
+            </div>
+        </>
+    )
+}
+
+function ReadOnlySettingsPanel({
+    dictionaryBadge,
+    dictionaryItems,
+    errorMessage,
+    fileNodes,
+    loadingContent,
+    loadingDictionary,
+    loadingTree,
+    modeTag,
+    readFile,
+    refreshDictionary,
+    selectedContent,
+    selectedPath,
+}) {
+    return (
+        <>
             <div className="card" style={{ background: '#fff8e6', borderColor: '#d4a574' }}>
                 <div className="card-header">
                     <span className="card-title">📋 只读展示模式</span>
@@ -304,6 +438,135 @@ export default function SettingsPage() {
                     </div>
                     <p style={{ margin: 0, color: '#9a2a1a' }}>{errorMessage}</p>
                 </div>
+            ) : null}
+        </>
+    )
+}
+
+export default function SettingsPage() {
+    const [activeTab, setActiveTab] = useState('provider')
+    const [errorMessage, setErrorMessage] = useState('')
+    const [fileNodes, setFileNodes] = useState([])
+    const [dictionaryItems, setDictionaryItems] = useState([])
+    const [selectedPath, setSelectedPath] = useState('')
+    const [selectedContent, setSelectedContent] = useState('')
+    const [loadingTree, setLoadingTree] = useState(true)
+    const [loadingDictionary, setLoadingDictionary] = useState(true)
+    const [loadingContent, setLoadingContent] = useState(false)
+    const [modeTag, setModeTag] = useState('api')
+
+    const setPageError = useCallback(error => {
+        setModeTag('error')
+        setErrorMessage(error?.message || '请求失败，请稍后重试')
+    }, [])
+
+    const refreshDictionary = useCallback(async () => {
+        setLoadingDictionary(true)
+        try {
+            const response = await listSettingDictionary({ limit: 200, offset: 0 })
+            setDictionaryItems(Array.isArray(response.items) ? response.items : [])
+            setErrorMessage('')
+            setModeTag(isMockResponse(response) ? 'mock' : 'api')
+        } catch (error) {
+            setPageError(error)
+        } finally {
+            setLoadingDictionary(false)
+        }
+    }, [setPageError])
+
+    const readFile = useCallback(async path => {
+        if (!path) {
+            setSelectedContent('')
+            return
+        }
+
+        setLoadingContent(true)
+        try {
+            const response = await readSettingsFile({ path })
+            setSelectedPath(path)
+            setSelectedContent(response.content || '')
+            setErrorMessage('')
+            setModeTag(isMockResponse(response) ? 'mock' : 'api')
+        } catch (error) {
+            setPageError(error)
+        } finally {
+            setLoadingContent(false)
+        }
+    }, [setPageError])
+
+    const refreshTree = useCallback(async () => {
+        setLoadingTree(true)
+        try {
+            const response = await fetchSettingsFileTree()
+            const nodes = Array.isArray(response.nodes) ? response.nodes : []
+            setFileNodes(nodes)
+            setErrorMessage('')
+            setModeTag(isMockResponse(response) ? 'mock' : 'api')
+            const initialPath = selectedPath || collectFirstFilePath(nodes)
+            if (initialPath) {
+                await readFile(initialPath)
+            }
+        } catch (error) {
+            setPageError(error)
+        } finally {
+            setLoadingTree(false)
+        }
+    }, [readFile, selectedPath, setPageError])
+
+    useEffect(() => {
+        void Promise.all([refreshTree(), refreshDictionary()])
+    }, [refreshDictionary, refreshTree])
+
+    const dictionaryBadge = useMemo(() => {
+        if (loadingDictionary) {
+            return '词典加载中'
+        }
+        return `${dictionaryItems.length} 条`
+    }, [dictionaryItems.length, loadingDictionary])
+
+    return (
+        <PageScaffold
+            title="Settings"
+            badge={activeTab === 'provider' ? 'Provider' : 'Dictionary'}
+            description="先配置生成 provider，再按需查看只读设定文件和词典条目。"
+        >
+            <div className="settings-tabs" role="tablist" aria-label="Settings 标签页">
+                <button
+                    type="button"
+                    role="tab"
+                    className={`settings-tab ${activeTab === 'provider' ? 'active' : ''}`}
+                    aria-selected={activeTab === 'provider'}
+                    onClick={() => setActiveTab('provider')}
+                >
+                    Provider
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    className={`settings-tab ${activeTab === 'readonly' ? 'active' : ''}`}
+                    aria-selected={activeTab === 'readonly'}
+                    onClick={() => setActiveTab('readonly')}
+                >
+                    Read-only 设定
+                </button>
+            </div>
+
+            {activeTab === 'provider' ? <ProviderSettingsPanel /> : null}
+            {activeTab === 'readonly' ? (
+                <ReadOnlySettingsPanel
+                    dictionaryBadge={dictionaryBadge}
+                    dictionaryItems={dictionaryItems}
+                    errorMessage={errorMessage}
+                    fileNodes={fileNodes}
+                    loadingContent={loadingContent}
+                    loadingDictionary={loadingDictionary}
+                    loadingTree={loadingTree}
+                    modeTag={modeTag}
+                    readFile={readFile}
+                    refreshDictionary={refreshDictionary}
+                    selectedContent={selectedContent}
+                    selectedPath={selectedPath}
+                />
             ) : null}
         </PageScaffold>
     )

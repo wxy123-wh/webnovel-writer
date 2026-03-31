@@ -46,6 +46,7 @@ class RuntimeLegacyState(BaseModel):
 class RuntimeGenerationState(BaseModel):
     provider: str = Field(default="local")
     configured: bool = Field(default=True)
+    skill_draft_available: bool = Field(default=False)
     api_key_configured: bool = Field(default=False)
     model: str = Field(default="")
     base_url: str = Field(default="")
