@@ -33,16 +33,18 @@ class ChatStreamAdapter:
         message_id: str,
         chat_id: str,
     ) -> Generator[str, None, None]:
-        yield sse_event(EVENT_MESSAGE_START, {"message_id": message_id, "chat_id": chat_id})
+        provider = "stub" if (self.config and getattr(self.config, "generation_api_type", "") == "stub") else "openai"
+        yield sse_event(
+            EVENT_MESSAGE_START,
+            {"message_id": message_id, "chat_id": chat_id, "provider": provider},
+        )
 
         try:
             from scripts.data_modules.generation_client import GenerationAPIClient
 
             client = GenerationAPIClient(self.config)
-            result = client.complete_text(messages=messages)
-
-            if result:
-                yield sse_event(EVENT_TEXT_DELTA, {"delta": result})
+            for chunk in client.complete_text_stream(messages=messages):
+                yield sse_event(EVENT_TEXT_DELTA, {"delta": chunk})
 
             yield sse_event(EVENT_MESSAGE_COMPLETE, {"message_id": message_id, "usage": {}})
         except Exception as exc:

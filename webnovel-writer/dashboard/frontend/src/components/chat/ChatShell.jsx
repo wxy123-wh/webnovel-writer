@@ -17,11 +17,14 @@ export default function ChatShell({ chatId }) {
         addAssistantPart,
         finalizeStream,
         setError,
+        setSyncError,
+        clearSyncError,
         setLoading,
     } = useChatState()
     const [skillOpen, setSkillOpen] = useState(false)
+    const [isStubMode, setIsStubMode] = useState(false)
 
-    const { sendStream, abort } = useChatStream({
+    const { sendStream, abort, providerRef } = useChatStream({
         chatId,
         addUserMessage,
         startStream,
@@ -29,8 +32,13 @@ export default function ChatShell({ chatId }) {
         addAssistantPart,
         finalizeStream,
         setError,
+        setSyncError,
         loadMessages,
     })
+
+    useEffect(() => {
+        setIsStubMode(providerRef.current === 'stub')
+    }, [providerRef, state.messages])
 
     useEffect(() => {
         let cancelled = false
@@ -74,6 +82,52 @@ export default function ChatShell({ chatId }) {
                 </div>
                 {state.isLoading ? <div className="loading">消息加载中...</div> : <MessageList messages={state.messages} />}
                 {state.error ? <div className="chat-error">{state.error}</div> : null}
+                {state.syncError ? (
+                    <div className="chat-sync-warning" style={{
+                        padding: '6px 12px',
+                        background: '#fff3cd',
+                        border: '1px solid #ffc107',
+                        borderRadius: 4,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: 13,
+                    }}>
+                        <span>{state.syncError}</span>
+                        <button onClick={() => {
+                            clearSyncError()
+                            if (chatId) {
+                                getMessages(chatId).then(loadMessages).catch(() => setSyncError('重试同步失败'))
+                            }
+                        }} type="button" style={{
+                            border: '1px solid #856404',
+                            background: '#fff',
+                            cursor: 'pointer',
+                            padding: '2px 8px',
+                            fontSize: 12,
+                        }}>
+                            重试
+                        </button>
+                    </div>
+                ) : null}
+                {isStubMode ? (
+                    <div style={{
+                        padding: '8px 12px',
+                        background: '#fff3cd',
+                        border: '1px solid #ffc107',
+                        borderRadius: 4,
+                        fontSize: 13,
+                        color: '#856404',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                    }}>
+                        <span>⚠️ 模拟模式 — AI 生成内容为模板占位。请配置 GENERATION_API_KEY 以启用真实生成。</span>
+                        <button onClick={() => setIsStubMode(false)} type="button" style={{
+                            border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, color: '#856404',
+                        }}>✕</button>
+                    </div>
+                ) : null}
                 <Composer onSend={sendStream} disabled={state.isStreaming} />
             </div>
             <SkillDrawer chatId={chatId} open={skillOpen} onClose={() => setSkillOpen(false)} />

@@ -7,6 +7,7 @@ const initialState = {
     isLoading: false,
     isStreaming: false,
     error: '',
+    syncError: '',
 }
 
 function buildAssistantPart(type, payload) {
@@ -141,6 +142,16 @@ function chatReducer(state, action) {
                 isLoading: false,
                 isStreaming: false,
             }
+        case 'SET_SYNC_ERROR':
+            return {
+                ...state,
+                syncError: action.error,
+            }
+        case 'CLEAR_SYNC_ERROR':
+            return {
+                ...state,
+                syncError: '',
+            }
         case 'SET_LOADING':
             return {
                 ...state,
@@ -168,6 +179,8 @@ export function useChatState() {
     )
     const finalizeStream = useCallback(() => dispatch({ type: 'FINALIZE_STREAM' }), [])
     const setError = useCallback(error => dispatch({ type: 'SET_ERROR', error }), [])
+    const setSyncError = useCallback(error => dispatch({ type: 'SET_SYNC_ERROR', error }), [])
+    const clearSyncError = useCallback(() => dispatch({ type: 'CLEAR_SYNC_ERROR' }), [])
     const setLoading = useCallback(loading => dispatch({ type: 'SET_LOADING', loading }), [])
 
     return {
@@ -180,6 +193,8 @@ export function useChatState() {
         addAssistantPart,
         finalizeStream,
         setError,
+        setSyncError,
+        clearSyncError,
         setLoading,
     }
 }

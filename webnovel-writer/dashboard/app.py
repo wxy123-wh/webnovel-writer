@@ -865,6 +865,36 @@ def create_app(
                 (limit,),
             )
 
+    @app.get("/api/skills")
+    def list_skills_workspace(
+        workspace_id: str = Query(""),
+        project_root: str = Query(""),
+        enabled: bool | None = Query(None),
+        limit: int = Query(100, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+    ):
+        """Workspace-level skill listing for Skills management page."""
+        from core.skill_system import ChatSkillRegistry
+
+        del workspace_id, project_root
+
+        root = _get_project_root_from_app(app)
+        registry = ChatSkillRegistry(root)
+        all_items = registry.list_all()
+
+        filtered = all_items
+        if enabled is not None:
+            filtered = [item for item in filtered if bool(item.get("enabled", True)) == enabled]
+
+        total = len(filtered)
+        paginated = filtered[offset:offset + limit]
+
+        return {
+            "status": "ok",
+            "items": paginated,
+            "total": total,
+        }
+
     # ===========================================================
     # API：文档浏览（正文/大纲/设定集 —— 只读）
     # ===========================================================
@@ -914,6 +944,138 @@ def create_app(
             content = "[二进制文件，无法预览]"
 
         return {"path": path, "content": content}
+
+    @app.get("/api/outlines")
+    def outlines(workspace_id: str = "", project_root: str = ""):
+        """读取总纲与最新细纲内容。"""
+        del workspace_id, project_root
+
+        root = _get_project_root_from_app(app)
+        outline_dir = root / "大纲"
+        total_outline = ""
+        detailed_outline = ""
+
+        total_path = outline_dir / "总纲.md"
+        if total_path.is_file():
+            total_outline = total_path.read_text(encoding="utf-8")
+
+        if outline_dir.is_dir():
+            detailed_files = sorted(outline_dir.glob("*-详细大纲.md"), reverse=True)
+            if detailed_files:
+                detailed_outline = detailed_files[0].read_text(encoding="utf-8")
+
+        return {
+            "status": "ok",
+            "total_outline": total_outline,
+            "detailed_outline": detailed_outline,
+        }
+
+    @app.get("/api/outlines/splits")
+    def outline_splits(
+        workspace_id: str = "",
+        project_root: str = "",
+        limit: int = Query(100, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+    ):
+        """返回大纲拆分历史（当前以节拍表文件作为近似记录）。"""
+        del workspace_id, project_root
+
+        root = _get_project_root_from_app(app)
+        outline_dir = root / "大纲"
+        items = []
+
+        if outline_dir.is_dir():
+            for file in sorted(outline_dir.glob("*-节拍表.md"), reverse=True):
+                items.append({
+                    "id": file.stem,
+                    "created_at": "",
+                    "segment_count": 0,
+                    "status": "completed",
+                })
+
+        total = len(items)
+        paginated = items[offset:offset + limit]
+
+        return {
+            "status": "ok",
+            "items": paginated,
+            "total": total,
+        }
+
+    @app.get("/api/settings/files/tree")
+    def settings_file_tree(workspace_id: str = "", project_root: str = ""):
+        del workspace_id, project_root
+        root = _get_project_root_from_app(app)
+        settings_dir = root / "设定集"
+        if not settings_dir.is_dir():
+            return {"status": "ok", "nodes": []}
+        return {"status": "ok", "nodes": _walk_tree(settings_dir, root, max_depth=20)}
+
+    @app.get("/api/settings/files/read")
+    def settings_file_read(path: str, workspace_id: str = "", project_root: str = ""):
+        del workspace_id, project_root
+        root = _get_project_root_from_app(app)
+        resolved = safe_resolve(root, path)
+        settings_dir = root / "设定集"
+        if not _is_child(resolved, settings_dir):
+            _raise_api_error(
+                403,
+                error_code="file_access_forbidden",
+                message="仅允许读取设定集目录下的文件",
+                details={"path": path},
+            )
+        if not resolved.is_file():
+            _raise_api_error(
+                404,
+                error_code="file_not_found",
+                message="文件不存在",
+                details={"path": path},
+            )
+        try:
+            content = resolved.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            content = "[二进制文件，无法预览]"
+        return {"status": "ok", "path": path, "content": content}
+
+    @app.get("/api/settings/dictionary")
+    def settings_dictionary(
+        term: str | None = Query(None),
+        type: str | None = Query(None),
+        status: str | None = Query(None),
+        limit: int = Query(100, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+        workspace_id: str = "",
+        project_root: str = "",
+    ):
+        del workspace_id, project_root
+        with closing(_get_db()) as conn:
+            q = "SELECT id, canonical_name, type, tier, first_appearance, last_appearance FROM entities"
+            params: list[Any] = []
+            clauses: list[str] = []
+            if term:
+                clauses.append("canonical_name LIKE ?")
+                params.append(f"%{term}%")
+            if type:
+                clauses.append("type = ?")
+                params.append(type)
+            if clauses:
+                q += " WHERE " + " AND ".join(clauses)
+            q += " ORDER BY last_appearance DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            rows = _fetchall_safe(conn, q, tuple(params))
+            items = [{
+                "id": r.get("id", ""),
+                "term": r.get("canonical_name", ""),
+                "type": r.get("type", "concept"),
+                "attrs": {},
+                "source_file": "",
+                "source_span": "0-0",
+                "status": "confirmed",
+                "fingerprint": "",
+            } for r in rows]
+            if status:
+                items = [item for item in items if item["status"] == status]
+            return {"status": "ok", "items": items, "total": len(items)}
 
     # ===========================================================
     # SSE：实时变更推送
