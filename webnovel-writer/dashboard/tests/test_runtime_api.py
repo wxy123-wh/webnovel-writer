@@ -81,9 +81,52 @@ def test_runtime_profile_returns_detected_state_and_preview():
         assert payload["pointer"]["workspace_root"] == str(workspace_root)
         assert payload["pointer"]["status"] == "codex_only"
         assert payload["legacy"]["project_legacy_reference_files"] == 1
+        assert payload["generation"]["provider"] == "local"
+        assert payload["generation"]["configured"] is True
         assert payload["migration_preview"]["dry_run"] is True
         assert payload["migration_preview"]["migratable_items"] >= 1
         assert any(item["kind"] == "references_directory" for item in payload["migration_preview"]["moved"])
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_runtime_profile_uses_app_state_project_root_when_query_missing():
+    workspace_root, project_root = _new_workspace_root("runtime-profile-app-state")
+    try:
+        app = _build_app()
+        app.state.project_root = project_root
+
+        with TestClient(app) as client:
+            response = client.get("/api/runtime/profile")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["workspace"]["project_root"] == str(project_root)
+        assert payload["generation"]["provider"] == "local"
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
+
+
+def test_runtime_profile_reports_generation_ready_when_api_key_present(monkeypatch):
+    workspace_root, project_root = _new_workspace_root("runtime-generation-ready")
+    try:
+        monkeypatch.setenv("GENERATION_API_TYPE", "openai")
+        monkeypatch.setenv("GENERATION_API_KEY", "sk-test")
+        monkeypatch.setenv("GENERATION_MODEL", "gpt-4o-mini")
+
+        app = _build_app()
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/runtime/profile",
+                params={"workspace_id": "workspace-default", "project_root": str(project_root)},
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["generation"]["provider"] == "openai"
+        assert payload["generation"]["api_key_configured"] is True
+        assert payload["generation"]["configured"] is True
+        assert payload["generation"]["model"] == "gpt-4o-mini"
     finally:
         shutil.rmtree(workspace_root, ignore_errors=True)
 

@@ -168,7 +168,7 @@ class DataModulesConfig:
     generation_api_type: str = field(
         default_factory=lambda: os.getenv(
             "GENERATION_API_TYPE",
-            "openai" if (os.getenv("GENERATION_API_KEY") or os.getenv("OPENAI_API_KEY")) else "stub",
+            "openai" if (os.getenv("GENERATION_API_KEY") or os.getenv("OPENAI_API_KEY")) else "local",
         )
     )
     generation_base_url: str = field(
@@ -180,7 +180,9 @@ class DataModulesConfig:
     generation_model: str = field(
         default_factory=lambda: os.getenv(
             "GENERATION_MODEL",
-            os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            if (os.getenv("GENERATION_API_KEY") or os.getenv("OPENAI_API_KEY"))
+            else "local-assist-v1",
         )
     )
     generation_api_key: str = field(

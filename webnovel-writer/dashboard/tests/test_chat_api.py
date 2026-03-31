@@ -240,3 +240,50 @@ class TestChatAPI:
         assert captured_messages
         assert "[workspace:ulw]" in captured_messages[0][0]["content"]
         assert "必须输出长篇细腻正文。" in captured_messages[0][0]["content"]
+
+    def test_send_message_uses_local_provider_without_api_key(self, client: TestClient):
+        project_root = Path(client.app.state.project_root)
+        state_path = project_root / ".webnovel" / "state.json"
+        state_path.write_text(
+            '{"project_info": {"title": "凡人修仙账本", "genre": "东方幻想"}, "progress": {"current_chapter": 3}}',
+            encoding="utf-8",
+        )
+
+        create_response = client.post("/api/chat/chats", json={"title": "Local Mode"})
+        chat_id = create_response.json()["chat_id"]
+
+        send_response = client.post(f"/api/chat/chats/{chat_id}/messages", json={"content": "帮我想一下第一章怎么开头"})
+        assert send_response.status_code == 200
+        payload = send_response.json()
+        assert payload["role"] == "assistant"
+        text = payload["parts"][0]["payload"]["text"]
+        assert "本地模式" in text
+        assert "凡人修仙账本" in text
+        assert "第一章怎么开头" in text
+
+    def test_local_mode_with_webnovel_write_skill_returns_structured_write_plan(self, client: TestClient):
+        project_root = Path(client.app.state.project_root)
+        state_path = project_root / ".webnovel" / "state.json"
+        state_path.write_text(
+            '{"project_info": {"title": "血色天平", "genre": "黑暗热血"}, "progress": {"current_chapter": 1}}',
+            encoding="utf-8",
+        )
+
+        create_response = client.post("/api/chat/chats", json={"title": "Write Plan"})
+        chat_id = create_response.json()["chat_id"]
+
+        update_response = client.patch(
+            f"/api/chat/chats/{chat_id}/skills",
+            json={"skills": [{"skill_id": "webnovel-write", "enabled": True}]},
+        )
+        assert update_response.status_code == 200
+
+        send_response = client.post(
+            f"/api/chat/chats/{chat_id}/messages",
+            json={"content": "帮我写一个章节开头方案"},
+        )
+        assert send_response.status_code == 200
+        text = send_response.json()["parts"][0]["payload"]["text"]
+        assert "写作型辅助模式" in text
+        assert "章节开头方案" in text
+        assert "下一轮可以直接把这个方案展开成三段正文试写" in text

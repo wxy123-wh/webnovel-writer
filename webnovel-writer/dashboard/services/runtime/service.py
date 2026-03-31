@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+from scripts.data_modules.config import DataModulesConfig
 
 DEFAULT_WORKSPACE_ID = "workspace-default"
 TARGET_CONTEXT_DIR = ".codex"
@@ -47,6 +50,8 @@ def get_runtime_profile(*, workspace_id: str | None, project_root: str | None) -
     pointer_state = _collect_pointer_state(workspace_root=workspace_root)
     legacy_state = _collect_legacy_state(project_root=root, workspace_root=workspace_root)
     migration_preview = _preview_migration(project_root=root, workspace_root=workspace_root)
+    generation_state = _collect_generation_state(project_root=root)
+    project_state = _collect_project_summary(project_root=root)
 
     return {
         "runtime_name": "codex",
@@ -56,6 +61,8 @@ def get_runtime_profile(*, workspace_id: str | None, project_root: str | None) -
         },
         "pointer": pointer_state,
         "legacy": legacy_state,
+        "generation": generation_state,
+        "project": project_state,
         "migration_preview": migration_preview,
     }
 
@@ -185,6 +192,52 @@ def _normalize_path(raw: str | Path) -> Path:
 
 def _is_project_root(path: Path) -> bool:
     return (path / ".webnovel" / "state.json").is_file()
+
+
+def _collect_generation_state(*, project_root: Path) -> dict[str, Any]:
+    config = DataModulesConfig(project_root=project_root)
+    provider = str(getattr(config, "generation_api_type", "local") or "local").strip() or "local"
+    api_key = str(getattr(config, "generation_api_key", "") or "").strip()
+    configured = provider == "local" or (provider != "stub" and bool(api_key))
+    model = str(getattr(config, "generation_model", "") or "")
+    base_url = str(getattr(config, "generation_base_url", "") or "")
+    if provider == "local":
+        model = "local-assist-v1"
+        base_url = ""
+    return {
+        "provider": provider,
+        "configured": configured,
+        "api_key_configured": bool(api_key),
+        "model": model,
+        "base_url": base_url,
+    }
+
+
+def _collect_project_summary(*, project_root: Path) -> dict[str, str]:
+    state_path = project_root / ".webnovel" / "state.json"
+    if not state_path.is_file():
+        return {"title": "", "genre": "", "current_chapter": ""}
+
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"title": "", "genre": "", "current_chapter": ""}
+
+    if not isinstance(payload, dict):
+        return {"title": "", "genre": "", "current_chapter": ""}
+
+    project_info = payload.get("project_info")
+    progress = payload.get("progress")
+    if not isinstance(project_info, dict):
+        project_info = {}
+    if not isinstance(progress, dict):
+        progress = {}
+
+    return {
+        "title": str(project_info.get("title") or "").strip(),
+        "genre": str(project_info.get("genre") or "").strip(),
+        "current_chapter": str(progress.get("current_chapter") if progress.get("current_chapter") is not None else "").strip(),
+    }
 
 
 def _resolve_workspace_root(project_root: Path) -> Path:
