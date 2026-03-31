@@ -1,0 +1,24 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - heading "网文创作台" [level=1] [ref=e6]
+      - generic [ref=e7]: Webnovel Dashboard
+    - navigation "主导航" [ref=e8]:
+      - button "Chat" [ref=e9] [cursor=pointer]:
+        - img [ref=e11]
+        - generic [ref=e13]: Chat
+    - generic [ref=e14]: 这里只保留一条可直接开始使用的主路径：Chat 创作工作台。
+    - generic [ref=e15]: 路由已启用
+  - main [ref=e17]:
+    - generic [ref=e18]:
+      - heading "Chat Agent" [level=2] [ref=e19]
+      - generic [ref=e20]: 检查运行时
+    - paragraph [ref=e21]: 在同一工作台中管理多轮对话、流式回复和技能挂载。
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - button "+ 新对话" [disabled] [ref=e25]
+        - generic [ref=e26]: 对话列表加载中...
+      - generic [ref=e29]:
+        - generic [ref=e30]: 正在检查
+        - heading "正在检查生成服务" [level=3] [ref=e31]
+        - paragraph [ref=e32]: 稍等一下，系统正在确认当前运行时是否已经准备好进行真实生成。

@@ -1,0 +1,4 @@
+[    1569ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8765/api/hierarchy/books/book-1/revisions/plot/plot-1:0
+[    1571ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8765/api/hierarchy/books/book-1/revisions/outline/outline-1:0
+[    1571ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8765/api/hierarchy/books/book-1/revisions/chapter/chapter-1:0
+[    1595ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8765/api/hierarchy/books/book-1/revisions/setting/setting-1:0

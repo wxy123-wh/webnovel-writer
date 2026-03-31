@@ -1,0 +1,32 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - heading "网文创作台" [level=1] [ref=e6]
+      - generic [ref=e7]: Webnovel Dashboard
+    - navigation "主导航" [ref=e8]:
+      - button "Chat" [ref=e9] [cursor=pointer]:
+        - img [ref=e11]
+        - generic [ref=e13]: Chat
+      - button "Workspace" [ref=e14] [cursor=pointer]:
+        - img [ref=e16]
+        - generic [ref=e20]: Workspace
+      - button "Skills" [ref=e21] [cursor=pointer]:
+        - img [ref=e23]
+        - generic [ref=e25]: Skills
+      - button "Settings" [ref=e26] [cursor=pointer]:
+        - img [ref=e28]
+        - generic [ref=e31]: Settings
+    - generic [ref=e32]: Chat 负责创作推进，Workspace 负责层级/章节/设定编辑与评审，Skills 负责模板技能库，Settings 负责 provider 配置。
+    - generic [ref=e33]: 路由已启用
+  - main [ref=e35]:
+    - generic [ref=e36]:
+      - heading "Hierarchy Workspace" [level=2] [ref=e37]
+      - generic [ref=e38]: 未加载书籍 · 0 节点
+    - paragraph [ref=e39]: 在同一工作台中浏览严格层级、编辑正文、评审提案，并查看可回滚节点的修订历史。
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - generic [ref=e43]: 当前工作区
+          - generic [ref=e44]: Single Book
+        - paragraph [ref=e45]: Workspace 现在直接消费层级 / 提案 / 修订 API。任何保存、确认或回滚都会遵守后端 optimistic locking，遇到 stale/conflict 会在这里直接提示，不再默默失败。
+      - alert [ref=e46]: "api_request_failed: 500 Internal Server Error"

@@ -1,0 +1,38 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - heading "网文创作台" [level=1] [ref=e57]
+      - generic [ref=e58]: Webnovel Dashboard
+    - navigation "主导航" [ref=e6]:
+      - button "Chat" [ref=e7] [cursor=pointer]:
+        - img [ref=e9]
+        - generic [ref=e59]: Chat
+    - generic [ref=e11]: 这里只保留一条可直接开始使用的主路径：Chat 创作工作台。
+    - generic [ref=e60]: 路由已启用
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - heading "Chat Agent" [level=2] [ref=e14]
+      - generic [ref=e15]: 2 个会话
+    - paragraph [ref=e16]: 在同一工作台中管理多轮对话、流式回复和技能挂载。
+    - generic [ref=e17]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - generic [ref=e30]: ✅ 本地模式已就绪
+          - generic [ref=e31]: Local
+        - paragraph [ref=e32]: 当前无需额外配置即可直接开始对话；如果你之后补充 API key，系统仍然可以切换到外部生成模式。
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - button "+ 新对话" [active] [ref=e20] [cursor=pointer]
+          - generic [ref=e33]:
+            - button "对话 2 03/31 10:06" [ref=e74] [cursor=pointer]:
+              - generic [ref=e75]: 对话 2
+              - generic [ref=e76]: 03/31 10:06
+            - button "Quick Start 03/31 10:02" [ref=e34] [cursor=pointer]:
+              - generic [ref=e35]: Quick Start
+              - generic [ref=e36]: 03/31 10:02
+        - generic [ref=e78]:
+          - button "⚡ Skills" [ref=e80] [cursor=pointer]
+          - paragraph [ref=e82]: 开始对话吧！输入你的写作需求，Agent 会帮助你推进创作。
+          - generic [ref=e83]:
+            - textbox "输入消息... (Enter 发送，Shift+Enter 换行)" [ref=e84]
+            - button "发送" [disabled] [ref=e85]

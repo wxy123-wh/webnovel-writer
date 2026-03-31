@@ -1,0 +1,19 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - navigation "主导航" [ref=e6]:
+      - button "Chat" [ref=e7] [cursor=pointer]:
+        - img [ref=e9]
+    - generic [ref=e11]: 这里只保留一条可直接开始使用的主路径：Chat 创作工作台。
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - heading "Chat Agent" [level=2] [ref=e14]
+      - generic [ref=e15]: 检查运行时
+    - paragraph [ref=e16]: 在同一工作台中管理多轮对话、流式回复和技能挂载。
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - button "+ 新对话" [disabled] [ref=e20]
+        - generic [ref=e21]: 对话列表加载中...
+      - generic [ref=e24]:
+        - generic [ref=e25]: 正在检查
+        - heading "正在检查生成服务" [level=3] [ref=e26]
+        - paragraph [ref=e27]: 稍等一下，系统正在确认当前运行时是否已经准备好进行真实生成。

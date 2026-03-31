@@ -1,0 +1,25 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - navigation "主导航" [ref=e6]:
+      - button "Chat" [ref=e7] [cursor=pointer]:
+        - img [ref=e9]
+      - button "Workspace" [ref=e11] [cursor=pointer]:
+        - img [ref=e13]
+      - button "Skills" [ref=e17] [cursor=pointer]:
+        - img [ref=e19]
+      - button "Settings" [ref=e21] [cursor=pointer]:
+        - img [ref=e23]
+    - generic [ref=e26]: Chat 负责创作推进，Workspace 负责层级/章节/设定编辑与评审，Skills 负责模板技能库，Settings 负责 provider 配置。
+  - main [ref=e27]:
+    - generic [ref=e48]:
+      - heading "Chat Agent" [level=2] [ref=e49]
+      - generic [ref=e50]: 检查运行时
+    - paragraph [ref=e51]: 在同一工作台中管理多轮对话、流式回复和技能挂载。
+    - generic [ref=e53]:
+      - generic [ref=e54]:
+        - button "+ 新对话" [disabled] [ref=e55]
+        - generic [ref=e56]: 对话列表加载中...
+      - generic [ref=e59]:
+        - generic [ref=e60]: 正在检查
+        - heading "正在检查生成服务" [level=3] [ref=e61]
+        - paragraph [ref=e62]: 稍等一下，系统正在确认当前运行时是否已经准备好进行真实生成。

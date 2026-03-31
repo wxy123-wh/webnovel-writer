@@ -1,0 +1,140 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - heading "网文创作台" [level=1] [ref=e57]
+      - generic [ref=e58]: Webnovel Dashboard
+    - navigation "主导航" [ref=e6]:
+      - button "Chat" [ref=e7] [cursor=pointer]:
+        - img [ref=e9]
+        - generic [ref=e59]: Chat
+    - generic [ref=e11]: 这里只保留一条可直接开始使用的主路径：Chat 创作工作台。
+    - generic [ref=e60]: 路由已启用
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - heading "Chat Agent" [level=2] [ref=e14]
+      - generic [ref=e15]: 2 个会话
+    - paragraph [ref=e16]: 在同一工作台中管理多轮对话、流式回复和技能挂载。
+    - generic [ref=e17]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - generic [ref=e30]: ✅ 本地模式已就绪
+          - generic [ref=e31]: Local
+        - paragraph [ref=e32]: 当前无需额外配置即可直接开始对话；如果你之后补充 API key，系统仍然可以切换到外部生成模式。
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - button "+ 新对话" [ref=e20] [cursor=pointer]
+          - generic [ref=e33]:
+            - button "对话 2 03/31 10:06" [ref=e74] [cursor=pointer]:
+              - generic [ref=e75]: 对话 2
+              - generic [ref=e76]: 03/31 10:06
+            - button "Quick Start 03/31 10:02" [ref=e34] [cursor=pointer]:
+              - generic [ref=e35]: Quick Start
+              - generic [ref=e36]: 03/31 10:02
+        - generic [ref=e77]:
+          - generic [ref=e78]:
+            - button "⚡ Skills" [ref=e80] [cursor=pointer]
+            - paragraph [ref=e82]: 开始对话吧！输入你的写作需求，Agent 会帮助你推进创作。
+            - generic [ref=e83]:
+              - textbox "输入消息... (Enter 发送，Shift+Enter 换行)" [ref=e84]
+              - button "发送" [disabled] [ref=e85]
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - heading "Skill 库" [level=3] [ref=e88]
+              - button "✕" [ref=e89] [cursor=pointer]
+            - generic [ref=e90]:
+              - generic [ref=e91]:
+                - generic [ref=e92]:
+                  - generic [ref=e93]: webnovel-dashboard
+                  - generic [ref=e94]: 启动可视化小说管理面板（只读 Web Dashboard），实时查看项目状态、实体图谱与章节内容。
+                  - generic [ref=e95]: system
+                - button "启用" [ref=e96] [cursor=pointer]
+              - generic [ref=e97]:
+                - generic [ref=e98]:
+                  - generic [ref=e99]: webnovel-init
+                  - generic [ref=e100]: 深度初始化网文项目。通过分阶段交互收集完整创作信息，生成可直接进入规划与写作的项目骨架与约束文件。
+                  - generic [ref=e101]: system
+                - button "启用" [ref=e102] [cursor=pointer]
+              - generic [ref=e103]:
+                - generic [ref=e104]:
+                  - generic [ref=e105]: webnovel-learn
+                  - generic [ref=e106]: 从当前会话提取成功模式并写入 project_memory.json
+                  - generic [ref=e107]: system
+                - button "启用" [ref=e108] [cursor=pointer]
+              - generic [ref=e109]:
+                - generic [ref=e110]:
+                  - generic [ref=e111]: webnovel-plan
+                  - generic [ref=e112]: Builds volume and chapter outlines from the total outline, inherits creative constraints, and prepares writing-ready chapter plans. Use when the user asks for outlining or runs /webnovel-plan.
+                  - generic [ref=e113]: system
+                - button "启用" [ref=e114] [cursor=pointer]
+              - generic [ref=e115]:
+                - generic [ref=e116]:
+                  - generic [ref=e117]: webnovel-query
+                  - generic [ref=e118]: Queries project settings for characters, powers, factions, items, and foreshadowing. Supports urgency analysis and golden finger status. Activates when user asks about story elements or /webnovel-query.
+                  - generic [ref=e119]: system
+                - button "启用" [ref=e120] [cursor=pointer]
+              - generic [ref=e121]:
+                - generic [ref=e122]:
+                  - generic [ref=e123]: webnovel-resume
+                  - generic [ref=e124]: Recovers interrupted webnovel tasks with precise workflow state tracking. Detects interruption point and provides safe recovery options. Activates when user wants to resume or /webnovel-resume.
+                  - generic [ref=e125]: system
+                - button "启用" [ref=e126] [cursor=pointer]
+              - generic [ref=e127]:
+                - generic [ref=e128]:
+                  - generic [ref=e129]: webnovel-review
+                  - generic [ref=e130]: Reviews chapter quality with checker agents and generates reports. Use when the user asks for a chapter review or runs /webnovel-review.
+                  - generic [ref=e131]: system
+                - button "启用" [ref=e132] [cursor=pointer]
+              - generic [ref=e133]:
+                - generic [ref=e134]:
+                  - generic [ref=e135]: webnovel-write
+                  - generic [ref=e136]: Writes webnovel chapters (default 2000-2500 words). Use when the user asks to write a chapter or runs /webnovel-write. Runs context, drafting, review, polish, and data extraction.
+                  - generic [ref=e137]: system
+                - button "已启用" [active] [ref=e187] [cursor=pointer]
+              - generic [ref=e139]:
+                - generic [ref=e140]:
+                  - generic [ref=e141]: Apocalypse
+                  - generic [ref=e142]: "> **Profile ID**: `apocalypse`"
+                  - generic [ref=e143]: profile
+                - button "启用" [ref=e144] [cursor=pointer]
+              - generic [ref=e145]:
+                - generic [ref=e146]:
+                  - generic [ref=e147]: Battle
+                  - generic [ref=e148]: "> **Profile ID**: `battle`"
+                  - generic [ref=e149]: profile
+                - button "启用" [ref=e150] [cursor=pointer]
+              - generic [ref=e151]:
+                - generic [ref=e152]:
+                  - generic [ref=e153]: Consistency
+                  - generic [ref=e154]: "> **Profile ID**: `consistency`"
+                  - generic [ref=e155]: profile
+                - button "启用" [ref=e156] [cursor=pointer]
+              - generic [ref=e157]:
+                - generic [ref=e158]:
+                  - generic [ref=e159]: Description
+                  - generic [ref=e160]: "> **Profile ID**: `description`"
+                  - generic [ref=e161]: profile
+                - button "启用" [ref=e162] [cursor=pointer]
+              - generic [ref=e163]:
+                - generic [ref=e164]:
+                  - generic [ref=e165]: Mystery
+                  - generic [ref=e166]: "> **Profile ID**: `mystery`"
+                  - generic [ref=e167]: profile
+                - button "启用" [ref=e168] [cursor=pointer]
+              - generic [ref=e169]:
+                - generic [ref=e170]:
+                  - generic [ref=e171]: Romance
+                  - generic [ref=e172]: "> **Profile ID**: `romance`"
+                  - generic [ref=e173]: profile
+                - button "启用" [ref=e174] [cursor=pointer]
+              - generic [ref=e175]:
+                - generic [ref=e176]:
+                  - generic [ref=e177]: Urban
+                  - generic [ref=e178]: "> **Profile ID**: `urban`"
+                  - generic [ref=e179]: profile
+                - button "启用" [ref=e180] [cursor=pointer]
+              - generic [ref=e181]:
+                - generic [ref=e182]:
+                  - generic [ref=e183]: Xianxia
+                  - generic [ref=e184]: "> **Profile ID**: `xianxia`"
+                  - generic [ref=e185]: profile
+                - button "启用" [ref=e186] [cursor=pointer]

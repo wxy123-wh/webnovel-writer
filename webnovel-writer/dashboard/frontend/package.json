@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test ./src/api/dashboardPages.test.js",
-    "test:vitest": "vitest run --environment jsdom ./src/components/ErrorBoundary.test.jsx"
+    "test": "node --test ./src/api/dashboardPages.test.js ./src/api/settings.test.js ./src/api/authoring.test.js",
+    "test:vitest": "vitest run --environment jsdom ./src/components/ErrorBoundary.test.jsx ./src/App.test.jsx ./src/pages/SettingsPage.test.jsx ./src/pages/ChatPage.test.jsx ./src/pages/SkillsPage.test.jsx ./src/pages/OutlineWorkspacePage.test.jsx"
   },
   "dependencies": {
     "react": "^19.0.0",
