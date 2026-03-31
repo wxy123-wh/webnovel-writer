@@ -140,6 +140,27 @@ async function requestJSON(path, { method = 'GET', query, body } = {}) {
     return payload ?? {}
 }
 
+function normalizeSkillItem(item = {}) {
+    return {
+        skill_id: String(item.skill_id || item.id || '').trim(),
+        name: String(item.name || item.skill_id || item.id || '').trim(),
+        description: String(item.description || '').trim(),
+        source: String(item.source || item.scope || 'workspace').trim() || 'workspace',
+        enabled: item.enabled !== false,
+        updated_at: item.updated_at || '',
+        needs_approval: Boolean(item.needs_approval),
+    }
+}
+
+function normalizeSkillDraft(item = {}) {
+    return {
+        skill_id: String(item.skill_id || '').trim(),
+        name: String(item.name || '').trim(),
+        description: String(item.description || '').trim(),
+        instruction_template: String(item.instruction_template || '').trim(),
+    }
+}
+
 export async function listSkills(options = {}) {
     const workspace = normalizeWorkspaceContext(options)
     const payload = await requestJSON(API_ROOT, {
@@ -154,10 +175,49 @@ export async function listSkills(options = {}) {
 
     return {
         status: payload.status || 'ok',
-        items: Array.isArray(payload.items) ? payload.items : [],
+        items: Array.isArray(payload.items) ? payload.items.map(normalizeSkillItem) : [],
         total: Number.isFinite(payload.total) ? payload.total : 0,
     }
 }
 
-// M1 阶段：删除写操作函数 createSkill、toggleSkill、deleteSkill
-// 这些操作已移至 CLI 命令 `webnovel codex session start --profile <profile>`
+export async function createSkill(payload) {
+    const response = await requestJSON(API_ROOT, {
+        method: 'POST',
+        body: {
+            skill_id: String(payload?.skill_id || '').trim(),
+            name: String(payload?.name || '').trim(),
+            description: String(payload?.description || '').trim(),
+            instruction_template: String(payload?.instruction_template || '').trim(),
+        },
+    })
+    return normalizeSkillItem(response)
+}
+
+export async function generateSkillDraft(payload) {
+    const response = await requestJSON(`${API_ROOT}/draft`, {
+        method: 'POST',
+        body: {
+            prompt: String(payload?.prompt || '').trim(),
+            current_draft: normalizeSkillDraft(payload?.currentDraft || {}),
+        },
+    })
+
+    return {
+        reply: String(response?.reply || '').trim(),
+        draft: normalizeSkillDraft(response?.draft || {}),
+    }
+}
+
+export async function deleteSkill(skillId) {
+    const normalizedSkillId = String(skillId || '').trim()
+    if (!normalizedSkillId) {
+        throw new SkillsApiError('Skill id is required.', {
+            status: 400,
+            errorCode: 'invalid_skill_payload',
+            errorType: 'validation',
+        })
+    }
+    await requestJSON(`${API_ROOT}/${encodeURIComponent(normalizedSkillId)}`, {
+        method: 'DELETE',
+    })
+}
