@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+from scripts.data_modules.config import read_project_env_values
+
+OPENAI_BASE_URL_DEFAULT = "https://api.openai.com/v1"
+OPENAI_MODEL_DEFAULT = "gpt-4o-mini"
+LOCAL_PROVIDER = "local"
+LOCAL_MODEL = "local-assist-v1"
 
 DEFAULT_WORKSPACE_ID = "workspace-default"
 TARGET_CONTEXT_DIR = ".codex"
@@ -47,6 +55,8 @@ def get_runtime_profile(*, workspace_id: str | None, project_root: str | None) -
     pointer_state = _collect_pointer_state(workspace_root=workspace_root)
     legacy_state = _collect_legacy_state(project_root=root, workspace_root=workspace_root)
     migration_preview = _preview_migration(project_root=root, workspace_root=workspace_root)
+    generation_state = _collect_generation_state(project_root=root)
+    project_state = _collect_project_summary(project_root=root)
 
     return {
         "runtime_name": "codex",
@@ -56,6 +66,8 @@ def get_runtime_profile(*, workspace_id: str | None, project_root: str | None) -
         },
         "pointer": pointer_state,
         "legacy": legacy_state,
+        "generation": generation_state,
+        "project": project_state,
         "migration_preview": migration_preview,
     }
 
@@ -185,6 +197,93 @@ def _normalize_path(raw: str | Path) -> Path:
 
 def _is_project_root(path: Path) -> bool:
     return (path / ".webnovel" / "state.json").is_file()
+
+
+def _collect_generation_state(*, project_root: Path) -> dict[str, Any]:
+    settings = _resolve_generation_settings(project_root=project_root)
+    provider = settings["provider"]
+    api_key = settings["api_key"]
+    configured = provider not in {"", LOCAL_PROVIDER, "stub"} and bool(api_key)
+    model = settings["model"]
+    base_url = settings["base_url"]
+    if provider == LOCAL_PROVIDER:
+        model = LOCAL_MODEL
+        base_url = ""
+    return {
+        "provider": provider,
+        "configured": configured,
+        "skill_draft_available": configured,
+        "api_key_configured": bool(api_key),
+        "model": model,
+        "base_url": base_url,
+    }
+
+
+def _resolve_generation_settings(*, project_root: Path) -> dict[str, str]:
+    project_env = read_project_env_values(project_root)
+    api_key = _read_generation_value(project_env, "GENERATION_API_KEY", aliases=("OPENAI_API_KEY",))
+    provider = _read_generation_value(project_env, "GENERATION_API_TYPE")
+    if not provider:
+        provider = "openai" if api_key else LOCAL_PROVIDER
+
+    model = _read_generation_value(project_env, "GENERATION_MODEL", aliases=("OPENAI_MODEL",))
+    if not model:
+        model = OPENAI_MODEL_DEFAULT if api_key else LOCAL_MODEL
+
+    base_url = _read_generation_value(project_env, "GENERATION_BASE_URL", aliases=("OPENAI_BASE_URL",))
+    if not base_url and provider != LOCAL_PROVIDER:
+        base_url = OPENAI_BASE_URL_DEFAULT
+
+    return {
+        "provider": provider,
+        "api_key": api_key,
+        "model": model,
+        "base_url": base_url,
+    }
+
+
+def _read_generation_value(project_env: dict[str, str], key: str, aliases: tuple[str, ...] = ()) -> str:
+    """Read a generation-related env value, preferring the project .env file over os.environ.
+
+    This ensures that after a PATCH writes new values to .env, subsequent GETs
+    return the freshly-saved values rather than stale os.environ entries.
+    os.environ is still used as fallback (important for Docker deployments).
+    """
+    for candidate in (key, *aliases):
+        project_value = str(project_env.get(candidate, "") or "").strip()
+        if project_value:
+            return project_value
+        env_value = str(os.environ.get(candidate, "") or "").strip()
+        if env_value:
+            return env_value
+    return ""
+
+
+def _collect_project_summary(*, project_root: Path) -> dict[str, str]:
+    state_path = project_root / ".webnovel" / "state.json"
+    if not state_path.is_file():
+        return {"title": "", "genre": "", "current_chapter": ""}
+
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"title": "", "genre": "", "current_chapter": ""}
+
+    if not isinstance(payload, dict):
+        return {"title": "", "genre": "", "current_chapter": ""}
+
+    project_info = payload.get("project_info")
+    progress = payload.get("progress")
+    if not isinstance(project_info, dict):
+        project_info = {}
+    if not isinstance(progress, dict):
+        progress = {}
+
+    return {
+        "title": str(project_info.get("title") or "").strip(),
+        "genre": str(project_info.get("genre") or "").strip(),
+        "current_chapter": str(progress.get("current_chapter") if progress.get("current_chapter") is not None else "").strip(),
+    }
 
 
 def _resolve_workspace_root(project_root: Path) -> Path:

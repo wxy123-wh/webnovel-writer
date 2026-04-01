@@ -22,6 +22,7 @@ class ChatResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str
     role: Literal["user"] = "user"
+    workflow: "ChatWorkflowRequest | None" = None
 
 
 class MessagePartResponse(BaseModel):
@@ -40,11 +41,21 @@ class MessageResponse(BaseModel):
 
 class StreamMessageRequest(BaseModel):
     content: str
+    workflow: "ChatWorkflowRequest | None" = None
+
+
+class ChatWorkflowRequest(BaseModel):
+    action: Literal["split", "edit", "extract"]
+    book_id: str
+    node_type: str | None = None
+    node_id: str | None = None
+    target_type: str | None = None
 
 
 class SkillMount(BaseModel):
     skill_id: str
     enabled: bool = True
+    source: str = "system"
 
 
 class UpdateChatSkillsRequest(BaseModel):

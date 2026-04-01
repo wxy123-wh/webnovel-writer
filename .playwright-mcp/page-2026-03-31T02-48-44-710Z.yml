@@ -1,0 +1,59 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - heading "网文创作台" [level=1] [ref=e6]
+      - generic [ref=e7]: Webnovel Dashboard
+    - navigation "主导航" [ref=e8]:
+      - button "Chat" [ref=e9] [cursor=pointer]:
+        - img [ref=e11]
+        - generic [ref=e13]: Chat
+    - generic [ref=e14]: 这里只保留一条可直接开始使用的主路径：Chat 创作工作台。
+    - generic [ref=e15]: 路由已启用
+  - main [ref=e17]:
+    - generic [ref=e18]:
+      - heading "Chat Agent" [level=2] [ref=e19]
+      - generic [ref=e20]: 4 个会话
+    - paragraph [ref=e21]: 在同一工作台中管理多轮对话、流式回复和技能挂载。
+    - generic [ref=e22]:
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]: ✅ 本地模式已就绪
+          - generic [ref=e36]: Local
+        - paragraph [ref=e37]: 当前无需额外配置即可直接开始对话；如果你之后补充 API key，系统仍然可以切换到外部生成模式。
+        - generic [ref=e38]:
+          - generic [ref=e39]: 作品：血色天平
+          - generic [ref=e40]: 类型：黑暗热血
+          - generic [ref=e41]: 当前章节：0
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - button "+ 新对话" [ref=e25] [cursor=pointer]
+          - generic [ref=e42]:
+            - button "对话 4 03/31 10:37" [ref=e43] [cursor=pointer]:
+              - generic [ref=e44]: 对话 4
+              - generic [ref=e45]: 03/31 10:37
+            - button "对话 3 03/31 10:23" [ref=e46] [cursor=pointer]:
+              - generic [ref=e47]: 对话 3
+              - generic [ref=e48]: 03/31 10:23
+            - button "对话 2 03/31 10:15" [ref=e49] [cursor=pointer]:
+              - generic [ref=e50]: 对话 2
+              - generic [ref=e51]: 03/31 10:15
+            - button "Quick Start 03/31 10:05" [ref=e52] [cursor=pointer]:
+              - generic [ref=e53]: Quick Start
+              - generic [ref=e54]: 03/31 10:05
+        - generic [ref=e56]:
+          - button "⚡ Skills" [active] [ref=e58] [cursor=pointer]
+          - generic [ref=e59]:
+            - generic [ref=e60]: 当前技能约束
+            - generic [ref=e62]: webnovel-write
+          - generic [ref=e63]:
+            - generic [ref=e64]:
+              - generic [ref=e65]: 你
+              - generic [ref=e67]: 按现在的项目状态，给我一个第一章开头方案
+              - generic [ref=e69]: 10:37
+            - generic [ref=e70]:
+              - generic [ref=e71]: Agent
+              - generic [ref=e73]: 这是本地模式下生成的真实辅助回复。 我已经读取到的当前项目信息：作品《血色天平》；类型是黑暗热血；当前推进到第0章。 你这次要处理的问题是：按现在的项目状态，给我一个第一章开头方案 当前已进入写作型辅助模式，我先给你一个可直接落笔的章节开头方案： 一、开头钩子：先让主角在第一页就面对一个必须马上回应的问题，避免从背景介绍起手。 二、第一段场景：用一个具体动作把人物、场景和当下压力绑在一起，例如‘他刚做完某件事，就立刻被新的变故打断’。 三、第二段推进：把主角最想达成的短期目标说清楚，同时让阻碍立刻出现，不要让冲突延后。 四、第三段收束：在段尾留一个逼读者继续看的悬念、代价或误判，形成自然翻页动力。 五、落笔提示：先写 300-500 字试段，只保留一个主冲突和一个情绪主色，写完后再继续扩章。 如果你愿意，我下一轮可以直接把这个方案展开成三段正文试写。
+              - generic [ref=e75]: 10:37
+          - generic [ref=e76]:
+            - textbox "输入消息... (Enter 发送，Shift+Enter 换行)" [ref=e77]
+            - button "发送" [disabled] [ref=e78]

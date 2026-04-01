@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getChatSkills, listSkills, updateChatSkills } from '../../api/chat.js'
 
-export default function SkillDrawer({ chatId, open, onClose }) {
+export default function SkillDrawer({ chatId, open, onClose, onSkillsChanged }) {
     const [allSkills, setAllSkills] = useState([])
     const [chatSkills, setChatSkills] = useState([])
     const [loading, setLoading] = useState(false)
@@ -19,7 +19,7 @@ export default function SkillDrawer({ chatId, open, onClose }) {
             ])
 
             if (!cancelledRef.current) {
-                setAllSkills(all)
+                setAllSkills(Array.isArray(all) ? all : [])
                 setChatSkills(mounted)
             }
         } catch (err) {
@@ -44,12 +44,13 @@ export default function SkillDrawer({ chatId, open, onClose }) {
         }
     }, [loadDrawerData, open, retryKey])
 
-    const toggleSkill = useCallback(async (skillId, enable) => {
+    const toggleSkill = useCallback(async (skill, enable) => {
         if (!chatId) return
-        await updateChatSkills(chatId, [{ skill_id: skillId, enabled: enable }])
+        await updateChatSkills(chatId, [{ skill_id: skill.skill_id, source: skill.source, enabled: enable }])
         const nextSkills = await getChatSkills(chatId)
         setChatSkills(nextSkills)
-    }, [chatId])
+        onSkillsChanged?.(nextSkills)
+    }, [chatId, onSkillsChanged])
 
     if (!open) return null
 
@@ -60,6 +61,7 @@ export default function SkillDrawer({ chatId, open, onClose }) {
                 <button className="skill-drawer-close" onClick={onClose} type="button">✕</button>
             </div>
             <div className="skill-drawer-body">
+                <p className="skill-drawer-note">这里会展示当前可挂载的系统技能与项目技能。你在 Skills 页面新建的模板技能会自动出现在这里。</p>
                 {loading ? (
                     <div className="loading">加载中...</div>
                 ) : error ? (
@@ -69,13 +71,22 @@ export default function SkillDrawer({ chatId, open, onClose }) {
                             <button onClick={() => setRetryKey(key => key + 1)} type="button">重试</button>
                         </div>
                     </div>
+                ) : allSkills.length === 0 ? (
+                    <div className="skill-card">
+                        <div className="skill-card-info">
+                            <div className="skill-card-name">暂无可挂载技能</div>
+                            <div className="skill-card-desc">先到 Skills 页面创建项目技能，或使用内置技能开始对话。</div>
+                        </div>
+                    </div>
                 ) : (
                     allSkills.map(skill => {
-                        const mounted = chatSkills.find(item => item.skill_id === skill.skill_id)
+                        const mounted = chatSkills.find(
+                            item => item.skill_id === skill.skill_id && item.source === skill.source,
+                        )
                         const isOn = mounted?.enabled ?? false
 
                         return (
-                            <div key={skill.skill_id} className={`skill-card ${isOn ? 'active' : ''}`}>
+                            <div key={`${skill.source}:${skill.skill_id}`} className={`skill-card ${isOn ? 'active' : ''}`}>
                                 <div className="skill-card-info">
                                     <div className="skill-card-name">{skill.name}</div>
                                     <div className="skill-card-desc">{skill.description}</div>
@@ -84,7 +95,7 @@ export default function SkillDrawer({ chatId, open, onClose }) {
                                 <button
                                     className={`skill-toggle ${isOn ? 'on' : 'off'}`}
                                     onClick={() => {
-                                        void toggleSkill(skill.skill_id, !isOn)
+                                        void toggleSkill(skill, !isOn)
                                     }}
                                     type="button"
                                 >

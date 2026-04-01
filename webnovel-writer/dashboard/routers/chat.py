@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from typing import Any
 
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+
+from ..models.common import ApiErrorResponse
 from ..models.chat import (
     ChatResponse,
     CreateChatRequest,
@@ -14,6 +17,16 @@ from ..models.chat import (
 )
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+def _workflow_error_response(error: Any, request: Request) -> JSONResponse:
+    payload = ApiErrorResponse(
+        error_code=error.error_code,
+        message=error.message,
+        details=error.details,
+        request_id=None,
+    )
+    return JSONResponse(status_code=error.status_code, content=payload.model_dump(exclude={"request_id"}))
 
 
 def _get_service(request: Request) -> "ChatOrchestrationService":
@@ -63,7 +76,9 @@ def get_messages(request: Request, chat_id: str) -> list[MessageResponse]:
 def send_message(request: Request, chat_id: str, body: SendMessageRequest) -> MessageResponse:
     service = _get_service(request)
     try:
-        return service.send_message(chat_id, body.content)
+        return service.send_message(chat_id, body.content, workflow=body.workflow.model_dump() if body.workflow else None)
+    except service.WorkflowChatError as exc:
+        return _workflow_error_response(exc, request)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Chat not found") from exc
 
@@ -73,11 +88,15 @@ def stream_message(request: Request, chat_id: str, body: StreamMessageRequest):
     service = _get_service(request)
     try:
         service._require_chat(chat_id)
+        if body.workflow is not None:
+            service.prepare_workflow(body.workflow.model_dump())
+    except service.WorkflowChatError as exc:
+        return _workflow_error_response(exc, request)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Chat not found") from exc
 
     def event_generator():
-        yield from service.send_and_stream(chat_id, body.content)
+        yield from service.send_and_stream(chat_id, body.content, workflow=body.workflow.model_dump() if body.workflow else None)
 
     return StreamingResponse(
         event_generator(),
@@ -91,7 +110,7 @@ def stream_message(request: Request, chat_id: str, body: StreamMessageRequest):
 
 
 @router.get("/skills")
-def list_skills(request: Request) -> list[SkillResponse]:
+def list_skills(request: Request) -> list[dict[str, Any]]:
     from core.skill_system import ChatSkillRegistry
 
     project_root = getattr(request.app.state, "project_root", None)

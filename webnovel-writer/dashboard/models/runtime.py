@@ -4,6 +4,8 @@ Runtime API models - M1 阶段：仅保留只读查询模型。
 写接口（迁移相关）已全部删除。
 """
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from .common import WorkspaceContext
@@ -41,8 +43,37 @@ class RuntimeLegacyState(BaseModel):
     project_legacy_reference_files: int = Field(default=0, ge=0)
 
 
+class RuntimeGenerationState(BaseModel):
+    provider: str = Field(default="local")
+    configured: bool = Field(default=True)
+    skill_draft_available: bool = Field(default=False)
+    api_key_configured: bool = Field(default=False)
+    model: str = Field(default="")
+    base_url: str = Field(default="")
+
+
+class RuntimeProjectSummary(BaseModel):
+    title: str = Field(default="")
+    genre: str = Field(default="")
+    current_chapter: str = Field(default="")
+
+
+class RuntimeMigrationPreview(BaseModel):
+    moved: list[dict[str, Any]] = Field(default_factory=list)
+    removed: list[dict[str, Any]] = Field(default_factory=list)
+    skipped: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    created_at: str = Field(default="")
+    dry_run: bool = Field(default=True)
+    project_root: str = Field(default="")
+    migratable_items: int = Field(default=0, ge=0)
+
+
 class RuntimeProfileResponse(BaseModel):
     runtime_name: str = Field(default="codex")
     workspace: WorkspaceContext
     pointer: RuntimePointerState
     legacy: RuntimeLegacyState
+    generation: RuntimeGenerationState
+    project: RuntimeProjectSummary
+    migration_preview: RuntimeMigrationPreview

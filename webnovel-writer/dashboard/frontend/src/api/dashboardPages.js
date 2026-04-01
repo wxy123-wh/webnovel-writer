@@ -1,24 +1,4 @@
-function resolveOrigin() {
-    if (typeof window !== 'undefined' && window.location?.origin) {
-        return window.location.origin
-    }
-    return 'http://localhost'
-}
-
-function buildURL(path, query = {}) {
-    const url = new URL(path, resolveOrigin())
-    Object.entries(query).forEach(([key, value]) => {
-        if (value === undefined || value === null || `${value}`.trim() === '') {
-            return
-        }
-        if (typeof value === 'boolean') {
-            url.searchParams.set(key, value ? 'true' : 'false')
-            return
-        }
-        url.searchParams.set(key, String(value))
-    })
-    return url.toString()
-}
+import { requestJSON as baseRequestJSON, toNetworkError } from './http.js'
 
 function toInt(value, fallback = 0) {
     const num = Number(value)
@@ -148,51 +128,20 @@ export function formatApiError(error, fallback = '请求失败，请稍后重试
 }
 
 export async function requestJSON(path, { method = 'GET', query, body, signal } = {}) {
-    const requestInit = {
-        method,
-        headers: {},
-        signal,
-    }
-
-    if (body !== undefined) {
-        requestInit.headers['Content-Type'] = 'application/json'
-        requestInit.body = JSON.stringify(body)
-    }
-
-    let response
     try {
-        response = await fetch(buildURL(path, query), requestInit)
+        return await baseRequestJSON(path, { method, query, body, signal })
     } catch (error) {
-        throw new DashboardApiError('无法连接到服务，请确认后端已启动。', {
-            status: 0,
-            errorCode: 'network_error',
-            details: { error: String(error) },
-        })
-    }
-
-    const rawText = await response.text()
-    let payload = null
-    if (rawText) {
-        try {
-            payload = JSON.parse(rawText)
-        } catch {
-            payload = { message: rawText }
-        }
-    }
-
-    if (!response.ok) {
-        const fallbackMessage = `${response.status} ${response.statusText}`
-        throw new DashboardApiError(
-            extractErrorMessage(payload, fallbackMessage),
+        if (error instanceof DashboardApiError) throw error
+        const wrapped = new DashboardApiError(
+            error.message || '请求失败',
             {
-                status: response.status,
-                errorCode: extractErrorCode(payload, response.status),
-                details: extractErrorDetails(payload),
+                status: error.status || 0,
+                errorCode: error.errorCode || 'dashboard_api_error',
+                details: error.details || null,
             },
         )
+        throw wrapped
     }
-
-    return payload ?? {}
 }
 
 export async function fetchDashboardOverview(options = {}) {

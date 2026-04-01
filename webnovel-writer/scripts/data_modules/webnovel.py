@@ -25,6 +25,7 @@ import argparse
 import importlib
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -1032,6 +1033,11 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
     project_root = _resolve_root(args.project_root)
     plugin_root = _scripts_dir().parent
 
+    frontend_check = _check_dashboard_frontend_assets()
+    if not frontend_check["ok"]:
+        _print_dashboard_frontend_guidance(frontend_check)
+        return 1
+
     env = os.environ.copy()
     existing_pythonpath = env.get("PYTHONPATH", "")
     if existing_pythonpath:
@@ -1054,9 +1060,104 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
         cmd.append("--no-browser")
     if args.no_bootstrap_index:
         cmd.append("--no-bootstrap-index")
+    for origin in args.cors_origins or []:
+        cmd.extend(["--cors-origin", origin])
+    if args.log_level:
+        cmd.extend(["--log-level", args.log_level])
+    if args.log_json:
+        cmd.append("--log-json")
+    if args.basic_auth:
+        cmd.extend(["--basic-auth", args.basic_auth])
 
     proc = subprocess.run(cmd, cwd=str(plugin_root), env=env)
     return int(proc.returncode or 0)
+
+
+def _dashboard_frontend_root() -> Path:
+    return _scripts_dir().parent / "dashboard" / "frontend"
+
+
+def _dashboard_frontend_dist_dir() -> Path:
+    return _dashboard_frontend_root() / "dist"
+
+
+def _pick_frontend_package_manager(frontend_root: Path) -> tuple[str | None, list[str]]:
+    candidates = [
+        ("pnpm", frontend_root / "pnpm-lock.yaml", ["pnpm", "install", "&&", "pnpm", "run", "build"]),
+        ("yarn", frontend_root / "yarn.lock", ["yarn", "install", "&&", "yarn", "build"]),
+        ("npm", frontend_root / "package-lock.json", ["npm", "install", "&&", "npm", "run", "build"]),
+    ]
+    for name, lock_file, command in candidates:
+        if lock_file.is_file() and shutil.which(name):
+            return name, command
+
+    if shutil.which("npm"):
+        return "npm", ["npm", "install", "&&", "npm", "run", "build"]
+    if shutil.which("pnpm"):
+        return "pnpm", ["pnpm", "install", "&&", "pnpm", "run", "build"]
+    if shutil.which("yarn"):
+        return "yarn", ["yarn", "install", "&&", "yarn", "build"]
+    return None, []
+
+
+def _check_dashboard_frontend_assets() -> dict[str, object]:
+    frontend_root = _dashboard_frontend_root()
+    dist_dir = _dashboard_frontend_dist_dir()
+    index_file = dist_dir / "index.html"
+    package_json = frontend_root / "package.json"
+    package_manager, build_command = _pick_frontend_package_manager(frontend_root)
+
+    if index_file.is_file():
+        return {
+            "ok": True,
+            "frontend_root": str(frontend_root),
+            "dist_dir": str(dist_dir),
+            "index_file": str(index_file),
+            "package_manager": package_manager,
+            "build_command": build_command,
+        }
+
+    reason = "frontend_dist_missing"
+    if not package_json.is_file():
+        reason = "frontend_package_json_missing"
+    elif package_manager is None:
+        reason = "frontend_package_manager_missing"
+
+    return {
+        "ok": False,
+        "reason": reason,
+        "frontend_root": str(frontend_root),
+        "dist_dir": str(dist_dir),
+        "index_file": str(index_file),
+        "package_json": str(package_json),
+        "package_manager": package_manager,
+        "build_command": build_command,
+    }
+
+
+def _print_dashboard_frontend_guidance(frontend_check: dict[str, object]) -> None:
+    reason = str(frontend_check.get("reason") or "frontend_dist_missing")
+    frontend_root = str(frontend_check.get("frontend_root") or _dashboard_frontend_root())
+    dist_dir = str(frontend_check.get("dist_dir") or _dashboard_frontend_dist_dir())
+    package_manager = str(frontend_check.get("package_manager") or "")
+    build_command = " ".join(str(item) for item in frontend_check.get("build_command") or [])
+    canonical_command = "powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot <PROJECT_ROOT> -StartDashboard"
+
+    print("ERROR dashboard frontend is not ready.", file=sys.stderr)
+    if reason == "frontend_package_json_missing":
+        print(f"  detail: frontend package.json missing: {frontend_root}", file=sys.stderr)
+    elif reason == "frontend_package_manager_missing":
+        print(f"  detail: built assets missing at {dist_dir}", file=sys.stderr)
+        print("  action: install Node.js 18+ and npm (or pnpm/yarn), then rerun the canonical startup helper.", file=sys.stderr)
+    else:
+        print(f"  detail: built assets missing at {dist_dir}", file=sys.stderr)
+        if package_manager and build_command:
+            print(f"  hint: detected package manager `{package_manager}`; manual recovery command: {build_command}", file=sys.stderr)
+    print(f"  action: rerun from repo root with `{canonical_command}`", file=sys.stderr)
+    print(
+        "  alternative: `python -X utf8 webnovel-writer/scripts/webnovel.py dashboard --project-root <PROJECT_ROOT>` after building the frontend.",
+        file=sys.stderr,
+    )
 
 
 def _parse_migrate_codex_args(argv: list[str]) -> argparse.Namespace:
@@ -1114,6 +1215,25 @@ def main() -> None:
         "--no-bootstrap-index",
         action="store_true",
         help="不自动初始化缺失的 .webnovel/index.db",
+    )
+    p_dashboard.add_argument(
+        "--cors-origin",
+        action="append",
+        dest="cors_origins",
+        metavar="ORIGIN",
+        help="允许的 CORS 来源（可多次指定）",
+    )
+    p_dashboard.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="日志级别，默认 INFO",
+    )
+    p_dashboard.add_argument("--log-json", action="store_true", help="输出 JSON 格式日志")
+    p_dashboard.add_argument(
+        "--basic-auth",
+        default=None,
+        help="可选 Basic Auth 凭据，格式 user:password",
     )
     p_dashboard.set_defaults(func=cmd_dashboard)
 

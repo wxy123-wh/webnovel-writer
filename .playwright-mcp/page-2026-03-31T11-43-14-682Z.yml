@@ -1,0 +1,78 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - navigation "主导航" [ref=e6]:
+      - button "Chat" [ref=e7] [cursor=pointer]:
+        - img [ref=e9]
+      - button "Workspace" [ref=e11] [cursor=pointer]:
+        - img [ref=e13]
+      - button "Skills" [ref=e17] [cursor=pointer]:
+        - img [ref=e19]
+      - button "Settings" [ref=e21] [cursor=pointer]:
+        - img [ref=e23]
+    - generic [ref=e26]: Chat 负责创作推进，Workspace 负责层级/章节/设定编辑与评审，Skills 负责模板技能库，Settings 负责 provider 配置。
+  - main [ref=e27]:
+    - generic [ref=e78]:
+      - heading "Hierarchy Workspace" [level=2] [ref=e79]
+      - generic [ref=e80]: 霜原长夜 · 7 节点
+    - paragraph [ref=e81]: 在同一工作台中浏览严格层级、编辑正文、评审提案，并查看可回滚节点的修订历史。
+    - generic [ref=e82]:
+      - generic [ref=e83]:
+        - generic [ref=e84]:
+          - generic [ref=e85]: 当前工作区
+          - generic [ref=e86]: Single Book
+        - paragraph [ref=e87]: Workspace 现在直接消费层级 / 提案 / 修订 API。任何保存、确认或回滚都会遵守后端 optimistic locking，遇到 stale/conflict 会在这里直接提示，不再默默失败。
+      - generic [ref=e88]:
+        - generic [ref=e89]:
+          - generic [ref=e90]: RAG 索引状态
+          - generic [ref=e91]: failed
+        - generic [ref=e92]: "generation: 3 · active_generation: none · published_generation: 2"
+        - generic [ref=e93]: "reason: manual_retry · artifact: codex-v2"
+        - generic [ref=e94]:
+          - button "标记为 stale" [ref=e95] [cursor=pointer]
+          - button "重建索引" [ref=e96] [cursor=pointer]
+      - generic [ref=e97]:
+        - complementary [ref=e98]:
+          - generic [ref=e99]:
+            - generic [ref=e100]: 层级导航
+            - button "刷新" [ref=e101] [cursor=pointer]
+          - generic [ref=e102]:
+            - button "天穹城 Setting" [ref=e103] [cursor=pointer]:
+              - generic [ref=e104]: 天穹城
+              - generic [ref=e105]: Setting
+            - button "正式设定 Canon" [ref=e106] [cursor=pointer]:
+              - generic [ref=e107]: 正式设定
+              - generic [ref=e108]: Canon
+            - button "总纲 Outline" [ref=e109] [cursor=pointer]:
+              - generic [ref=e110]: 总纲
+              - generic [ref=e111]: Outline
+            - button "主线推进 Plot" [ref=e112] [cursor=pointer]:
+              - generic [ref=e113]: 主线推进
+              - generic [ref=e114]: Plot
+            - button "候选事件 Event" [ref=e115] [cursor=pointer]:
+              - generic [ref=e116]: 候选事件
+              - generic [ref=e117]: Event
+            - button "雪夜对峙 Scene" [ref=e118] [cursor=pointer]:
+              - generic [ref=e119]: 雪夜对峙
+              - generic [ref=e120]: Scene
+            - button "第一章 雪夜来客 Chapter" [active] [ref=e121] [cursor=pointer]:
+              - generic [ref=e122]: 第一章 雪夜来客
+              - generic [ref=e123]: Chapter
+        - generic [ref=e124]:
+          - tablist "Workspace 面板标签页" [ref=e125]:
+            - tab "编辑器" [selected] [ref=e126] [cursor=pointer]
+            - tab "提案评审" [ref=e127] [cursor=pointer]
+            - tab "修订记录" [ref=e128] [cursor=pointer]
+          - generic [ref=e129]:
+            - generic [ref=e130]:
+              - generic [ref=e131]: 章节编辑器
+              - generic [ref=e132]: v7
+            - generic [ref=e133]:
+              - generic [ref=e134]:
+                - generic [ref=e135]: 标题
+                - textbox "标题" [ref=e136]: 第一章 雪夜来客
+              - generic [ref=e137]:
+                - generic [ref=e138]: 章节正文
+                - textbox "章节正文" [ref=e143]: 章节初稿
+              - generic [ref=e140]:
+                - button "刷新当前节点" [ref=e141] [cursor=pointer]
+                - button "保存当前内容" [ref=e142] [cursor=pointer]

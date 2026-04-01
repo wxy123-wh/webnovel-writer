@@ -13,9 +13,10 @@ class ChatSkill:
     enabled: bool = True
     input_schema: dict[str, Any] | None = None
     needs_approval: bool = False
+    updated_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "skill_id": self.skill_id,
             "name": self.name,
             "description": self.description,
@@ -23,3 +24,6 @@ class ChatSkill:
             "enabled": self.enabled,
             "needs_approval": self.needs_approval,
         }
+        if self.updated_at:
+            payload["updated_at"] = self.updated_at
+        return payload

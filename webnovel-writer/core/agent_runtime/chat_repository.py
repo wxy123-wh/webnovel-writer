@@ -92,7 +92,7 @@ class ChatRepository:
         message_id: str,
         seq: int,
         part_type: PartType,
-        payload: dict,
+        payload: dict[str, object],
     ) -> MessagePart:
         normalized_payload = dict(payload)
         connection.execute(
@@ -234,7 +234,7 @@ class ChatRepository:
             return cursor.rowcount > 0
 
     # MessagePart CRUD
-    def add_part(self, part_id: str, message_id: str, seq: int, part_type: PartType, payload: dict) -> MessagePart:
+    def add_part(self, part_id: str, message_id: str, seq: int, part_type: PartType, payload: dict[str, object]) -> MessagePart:
         with self._connection() as connection:
             part = self._insert_part(
                 connection,
@@ -302,7 +302,21 @@ class ChatRepository:
             self._touch_chat(connection, chat_id)
             connection.commit()
 
-    def list_chat_skills(self, chat_id: str) -> list[dict]:
+    def unmount_skill_everywhere(self, skill_id: str, *, source: str | None = None) -> None:
+        with self._connection() as connection:
+            if source:
+                connection.execute(
+                    "DELETE FROM chat_skills WHERE skill_id = ? AND source = ?",
+                    (skill_id, source),
+                )
+            else:
+                connection.execute(
+                    "DELETE FROM chat_skills WHERE skill_id = ?",
+                    (skill_id,),
+                )
+            connection.commit()
+
+    def list_chat_skills(self, chat_id: str) -> list[dict[str, object]]:
         with self._connection() as connection:
             rows = connection.execute(
                 "SELECT chat_id, skill_id, enabled, source, attached_at FROM chat_skills WHERE chat_id = ? ORDER BY attached_at ASC, skill_id ASC",

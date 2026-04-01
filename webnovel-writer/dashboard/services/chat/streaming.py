@@ -33,7 +33,7 @@ class ChatStreamAdapter:
         message_id: str,
         chat_id: str,
     ) -> Generator[str, None, None]:
-        provider = "stub" if (self.config and getattr(self.config, "generation_api_type", "") == "stub") else "openai"
+        provider = str(getattr(self.config, "generation_api_type", "local") or "local")
         yield sse_event(
             EVENT_MESSAGE_START,
             {"message_id": message_id, "chat_id": chat_id, "provider": provider},

@@ -4,7 +4,7 @@
 
 Webnovel Writer 的唯一主产品形态定义为：**对话式 Chat Agent 写作台**。
 
-用户与 Agent 对话推进小说创作；Skill 库按会话装载；内部固定沿用“大纲 → 剧情 → 事件 → 场景 → 整章整合”的流水线；RAG 索引与验证负责长篇小说的一致性保障。CLI、Dashboard、VS Code 插件与历史 Codex / ClaudeCode 形态不再作为主产品入口定义，只保留 companion / ops surface 角色。
+用户与 Agent 对话推进小说创作；Skill 库按会话装载；内部固定沿用“大纲 → 剧情 → 事件 → 场景 → 整章整合”的流水线；RAG 索引与验证负责长篇小说的一致性保障。CLI、Dashboard 与历史 Codex / ClaudeCode 形态不再作为主产品入口定义，只保留 companion / ops surface 角色。
 
 ## 目标架构模型
 
@@ -45,7 +45,6 @@ apps/
 
 - **CLI**：用于自动化、运维、脚本化调用
 - **Dashboard**：只读观察、诊断、数据确认
-- **VS Code Companion**：只读浏览和跳转辅助
 
 这些入口可以继续存在，但不能再反向定义产品形态。
 
@@ -86,10 +85,6 @@ Dashboard 的职责固定为：
 
 不承担主写作入口，不承担 skill 管理主入口，不承担产品主叙事。
 
-### VS Code Companion
-
-VS Code 插件固定为只读 companion，不承担主流程。
-
 ## 核心数据流
 
 ### 写作主路径（目标形态）
@@ -111,7 +106,7 @@ Project Files / Runtime State
 ### Companion 路径
 
 ```text
-CLI / Dashboard / VS Code Companion
+CLI / Dashboard
   ↓
 调用或读取 core 层能力
   ↓
@@ -174,4 +169,4 @@ Phase 2 在现有 `dashboard/` 上实现了 Chat Agent 主入口：
 2. 不做多租户认证/授权。
 3. 不做独立的 `apps/chat-ui/` 应用（在 dashboard 上扩展）。
 4. 不做会话级 stream 断点续传。
-5. 不把 Dashboard 或 VS Code 插件重新抬回主入口。
+5. 不把 Dashboard 重新抬回主入口。

@@ -1,14 +1,9 @@
+import { createRequestUrl } from './http.js'
+
 const API_BASE = '/api/chat'
 
-function resolveOrigin() {
-    if (typeof window !== 'undefined' && window.location?.origin) {
-        return window.location.origin
-    }
-    return 'http://localhost'
-}
-
 function buildURL(path) {
-    return new URL(`${API_BASE}${path}`, resolveOrigin()).toString()
+    return createRequestUrl(`${API_BASE}${path}`)
 }
 
 export class ChatApiError extends Error {
@@ -65,10 +60,6 @@ export async function createChat({ title = '', profile = null, skillIds = null }
     return request('/chats', { method: 'POST', body: JSON.stringify(body) })
 }
 
-export async function getChat(chatId) {
-    return request(`/chats/${chatId}`)
-}
-
 export async function deleteChat(chatId) {
     return request(`/chats/${chatId}`, { method: 'DELETE' })
 }
@@ -76,13 +67,6 @@ export async function deleteChat(chatId) {
 export async function getMessages(chatId) {
     const payload = await request(`/chats/${chatId}/messages`)
     return Array.isArray(payload) ? payload : []
-}
-
-export async function sendMessage(chatId, content) {
-    return request(`/chats/${chatId}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({ content, role: 'user' }),
-    })
 }
 
 export async function listSkills() {

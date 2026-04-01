@@ -1,0 +1,41 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - heading "网文创作台" [level=1] [ref=e6]
+      - generic [ref=e7]: Webnovel Dashboard
+    - navigation "主导航" [ref=e8]:
+      - button "Chat" [ref=e9] [cursor=pointer]:
+        - img [ref=e11]
+        - generic [ref=e13]: Chat
+    - generic [ref=e14]: 这里只保留一条可直接开始使用的主路径：Chat 创作工作台。
+    - generic [ref=e15]: 路由已启用
+  - main [ref=e17]:
+    - generic [ref=e18]:
+      - heading "Chat Agent" [level=2] [ref=e19]
+      - generic [ref=e20]: 加载中
+    - paragraph [ref=e21]: 在同一工作台中管理多轮对话、流式回复和技能挂载。
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]: ✅ 本地模式已就绪
+          - generic [ref=e26]: Local
+        - paragraph [ref=e27]: 当前无需额外配置即可直接开始对话；如果你之后补充 API key，系统仍然可以切换到外部生成模式。
+        - generic [ref=e28]:
+          - generic [ref=e29]: 作品：血色天平
+          - generic [ref=e30]: 类型：黑暗热血
+          - generic [ref=e31]: 当前章节：0
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - button "+ 新对话" [ref=e34] [cursor=pointer]
+          - generic [ref=e35]: 对话列表加载中...
+        - generic [ref=e38]:
+          - generic [ref=e39]: 首次开始
+          - heading "先创建一个对话，再开始推进你的小说" [level=3] [ref=e40]
+          - paragraph [ref=e41]: 这是当前产品的主工作台。先创建第一轮对话，你就可以直接让 Agent 帮你做选题、设定、大纲或章节写作。
+          - button "创建第一个对话" [ref=e42] [cursor=pointer]
+          - generic [ref=e43]:
+            - generic [ref=e44]: 你可以直接这样开始：
+            - list [ref=e45]:
+              - listitem [ref=e46]: 帮我生成这本书的核心卖点和一句话简介
+              - listitem [ref=e47]: 按现在的项目状态，给我一个第一章开头方案
+              - listitem [ref=e48]: 我想先梳理主角设定，帮我列出必须补齐的三项

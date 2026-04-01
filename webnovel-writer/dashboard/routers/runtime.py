@@ -4,7 +4,7 @@ Runtime router - M1 阶段：仅保留只读查询接口。
 写接口（迁移相关）已全部删除，由 CLI 统一入口 `webnovel codex` 承载。
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from ..models.common import ApiErrorResponse
@@ -26,12 +26,17 @@ _DEPENDS_QUERY = Depends()
 
 
 @router.get("/profile", response_model=RuntimeProfileResponse, responses=READ_ERROR_RESPONSES)
-def get_runtime_profile(query: RuntimeProfileQuery = _DEPENDS_QUERY):
+def get_runtime_profile(request: Request, query: RuntimeProfileQuery = _DEPENDS_QUERY):
     """获取运行时配置信息（只读）。"""
     try:
+        project_root = query.project_root
+        if not project_root:
+            app_project_root = getattr(request.app.state, "project_root", None)
+            if app_project_root:
+                project_root = str(app_project_root)
         profile = get_runtime_profile_service(
             workspace_id=query.workspace_id,
-            project_root=query.project_root,
+            project_root=project_root,
         )
         return RuntimeProfileResponse.model_validate(profile)
     except RuntimeServiceError as exc:

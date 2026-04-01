@@ -1,3 +1,5 @@
+import { requestJSON } from './http.js'
+
 const DEFAULT_WORKSPACE_ID = 'workspace-default'
 
 function resolveProjectRoot(explicitProjectRoot) {
@@ -24,69 +26,6 @@ function buildWorkspace({ workspaceId, projectRoot } = {}) {
         workspace_id: workspaceId || DEFAULT_WORKSPACE_ID,
         project_root: resolveProjectRoot(projectRoot),
     }
-}
-
-function createRequestUrl(pathname, query = {}) {
-    const url = new URL(pathname, window.location.origin)
-    Object.entries(query).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && `${value}`.trim() !== '') {
-            url.searchParams.set(key, value)
-        }
-    })
-    return url.toString()
-}
-
-function resolveRuntimeMode() {
-    if (typeof import.meta !== 'undefined' && import.meta?.env) {
-        const mode = typeof import.meta.env.MODE === 'string'
-            ? import.meta.env.MODE.trim().toLowerCase()
-            : ''
-        if (mode) {
-            return mode
-        }
-        if (import.meta.env.PROD === true) {
-            return 'production'
-        }
-        if (import.meta.env.DEV === true) {
-            return 'development'
-        }
-    }
-    if (typeof process !== 'undefined' && process?.env?.NODE_ENV) {
-        return process.env.NODE_ENV.trim().toLowerCase()
-    }
-    return 'development'
-}
-
-async function requestJSON(pathname, { method = 'GET', query, body, signal } = {}) {
-    const response = await fetch(createRequestUrl(pathname, query), {
-        method,
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-        signal,
-    })
-
-    const rawText = await response.text()
-    let payload = {}
-    if (rawText) {
-        try {
-            payload = JSON.parse(rawText)
-        } catch {
-            payload = { message: rawText }
-        }
-    }
-
-    if (!response.ok) {
-        const details = payload?.detail || payload
-        const errorCode = details?.error_code || 'api_request_failed'
-        const message = details?.message || `${response.status} ${response.statusText}`
-        const error = new Error(message)
-        error.status = response.status
-        error.errorCode = errorCode
-        error.details = details?.details || null
-        throw error
-    }
-
-    return payload
 }
 
 function normalizeDictionaryItem(item) {
@@ -139,6 +78,16 @@ export async function fetchSettingsFileTree(options = {}) {
     }
 }
 
+function normalizeProviderSettings(payload) {
+    return {
+        provider: typeof payload?.provider === 'string' ? payload.provider : '',
+        base_url: typeof payload?.base_url === 'string' ? payload.base_url : '',
+        model: typeof payload?.model === 'string' ? payload.model : '',
+        api_key_configured: Boolean(payload?.api_key_configured),
+        configured: Boolean(payload?.configured),
+    }
+}
+
 export async function readSettingsFile(options = {}) {
     const workspace = buildWorkspace(options)
     const filePath = typeof options.path === 'string' ? options.path.trim() : ''
@@ -178,4 +127,28 @@ export async function listSettingDictionary(options = {}) {
         items,
         total: Number.isFinite(payload?.total) ? payload.total : items.length,
     }
+}
+
+export async function fetchProviderSettings(options = {}) {
+    const payload = await requestJSON('/api/settings/provider', {
+        signal: options.signal,
+    })
+
+    return normalizeProviderSettings(payload)
+}
+
+export async function updateProviderSettings(options = {}) {
+    const payload = await requestJSON('/api/settings/provider', {
+        method: 'PATCH',
+        body: {
+            provider: typeof options.provider === 'string' ? options.provider.trim() : '',
+            base_url: typeof options.base_url === 'string' ? options.base_url.trim() : '',
+            model: typeof options.model === 'string' ? options.model.trim() : '',
+            api_key: typeof options.api_key === 'string' ? options.api_key : '',
+            clear_api_key: Boolean(options.clear_api_key),
+        },
+        signal: options.signal,
+    })
+
+    return normalizeProviderSettings(payload)
 }

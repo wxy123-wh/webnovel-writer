@@ -97,6 +97,37 @@ def _load_project_dotenv(project_root: Path) -> None:
     except Exception:
         return
 
+
+def read_dotenv_values(env_path: str | Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    path = Path(env_path)
+    if not path.exists():
+        return values
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                if not key:
+                    continue
+                values[key] = value.strip()
+    except Exception:
+        return {}
+
+    return values
+
+
+def read_project_env_values(project_root: str | Path) -> dict[str, str]:
+    try:
+        root = normalize_windows_path(project_root).expanduser().resolve()
+    except Exception:
+        root = normalize_windows_path(project_root).expanduser()
+    return read_dotenv_values(root / ".env")
+
 _load_dotenv()
 
 
@@ -168,7 +199,7 @@ class DataModulesConfig:
     generation_api_type: str = field(
         default_factory=lambda: os.getenv(
             "GENERATION_API_TYPE",
-            "openai" if (os.getenv("GENERATION_API_KEY") or os.getenv("OPENAI_API_KEY")) else "stub",
+            "openai" if (os.getenv("GENERATION_API_KEY") or os.getenv("OPENAI_API_KEY")) else "local",
         )
     )
     generation_base_url: str = field(
@@ -180,7 +211,9 @@ class DataModulesConfig:
     generation_model: str = field(
         default_factory=lambda: os.getenv(
             "GENERATION_MODEL",
-            os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            if (os.getenv("GENERATION_API_KEY") or os.getenv("OPENAI_API_KEY"))
+            else "local-assist-v1",
         )
     )
     generation_api_key: str = field(

@@ -7,6 +7,7 @@ Dashboard 启动脚本
 """
 
 import argparse
+import importlib
 import os
 import subprocess
 import sys
@@ -15,32 +16,37 @@ from pathlib import Path
 
 
 def _resolve_project_root(cli_root: str | None) -> Path:
-    """按优先级解析 PROJECT_ROOT：CLI > 环境变量 > context 指针 > CWD。"""
-    if cli_root:
-        return Path(cli_root).resolve()
+    """复用 scripts/project_locator.py 中的统一解析逻辑。"""
+    package_root = Path(__file__).resolve().parents[1]
+    scripts_root = package_root / "scripts"
+    if str(scripts_root) not in sys.path:
+        sys.path.insert(0, str(scripts_root))
 
-    env = os.environ.get("WEBNOVEL_PROJECT_ROOT")
-    if env:
-        return Path(env).resolve()
+    try:
+        project_locator = importlib.import_module("project_locator")
+    except Exception as exc:
+        print(f"ERROR: 无法导入 project_locator 以解析项目路径: {exc}", file=sys.stderr)
+        sys.exit(1)
 
-    # 尝试从 .codex 指针读取
-    cwd = Path.cwd()
-    for dirname in (".codex",):
-        pointer = cwd / dirname / ".webnovel-current-project"
-        if not pointer.is_file():
-            continue
-        target = pointer.read_text(encoding="utf-8").strip()
-        if target:
-            p = Path(target)
-            if p.is_dir() and (p / ".webnovel" / "state.json").is_file():
-                return p.resolve()
+    try:
+        resolve_project_root = getattr(project_locator, "resolve_project_root")
+        root = resolve_project_root(cli_root, cwd=Path.cwd())
+    except FileNotFoundError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        print(
+            "Hint: run `powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot <PROJECT_ROOT> -StartDashboard` from the repo root.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except Exception as exc:
+        print(f"ERROR: 项目路径解析失败: {type(exc).__name__}: {exc}", file=sys.stderr)
+        sys.exit(1)
 
-    # 最终兜底：当前目录
-    if (cwd / ".webnovel" / "state.json").is_file():
-        return cwd.resolve()
-
-    print("ERROR: 无法定位 PROJECT_ROOT（需要包含 .webnovel/state.json 的目录）", file=sys.stderr)
-    sys.exit(1)
+    state_path = root / ".webnovel" / "state.json"
+    if not state_path.is_file():
+        print(f"ERROR: 项目根目录缺少 .webnovel/state.json: {root}", file=sys.stderr)
+        sys.exit(1)
+    return root
 
 
 def _bootstrap_index_if_needed(project_root: Path) -> None:
