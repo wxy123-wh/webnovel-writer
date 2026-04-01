@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import sqlite3
 from contextlib import contextmanager
 from copy import deepcopy
@@ -19,7 +21,11 @@ from .repository import BookHierarchyRepository, canonical_fingerprint
 from .schema import get_hierarchy_db_path
 
 
+logger = logging.getLogger(__name__)
+
+
 class BookHierarchyService:
+    _HIERARCHY_VECTOR_ENTITY_TYPES = {"outline", "setting", "canon_entry"}
     _STRUCTURAL_CHILD_TYPES = {
         "outline": "plot",
         "plot": "event",
@@ -49,6 +55,7 @@ class BookHierarchyService:
         self._require_book(book_id)
         outline = self.repository.create_outline(book_id=book_id, title=title, body=body, metadata=metadata)
         self._mark_index_stale(book_id, reason="outline_created")
+        self._refresh_hierarchy_vectors(entity_type="outline")
         return outline
 
     def create_plot(self, book_id: str, outline_id: str, *, title: str, body: str = "", metadata: dict[str, Any] | None = None):
@@ -83,12 +90,14 @@ class BookHierarchyService:
         self._require_book(book_id)
         setting = self.repository.create_setting(book_id=book_id, title=title, body=body, metadata=metadata)
         self._mark_index_stale(book_id, reason="setting_created")
+        self._refresh_hierarchy_vectors(entity_type="setting")
         return setting
 
     def create_canon_entry(self, book_id: str, *, title: str, body: str = "", metadata: dict[str, Any] | None = None):
         self._require_book(book_id)
         canon = self.repository.create_canon_entry(book_id=book_id, title=title, body=body, metadata=metadata)
         self._mark_index_stale(book_id, reason="canon_entry_created")
+        self._refresh_hierarchy_vectors(entity_type="canon_entry")
         return canon
 
     def create_proposal(
@@ -627,6 +636,7 @@ class BookHierarchyService:
         self.repository.create_revision(entity_type=entity_type, entity_id=entity_id, parent_revision_number=target_revision)
         restored = self._require_entity(entity_type, entity_id)
         self._mark_index_stale(book_id, reason=f"{entity_type}_rolled_back")
+        self._refresh_hierarchy_vectors(entity_type=entity_type)
         return restored
 
     def delete_plot(self, book_id: str, plot_id: str) -> None:
@@ -1000,6 +1010,7 @@ class BookHierarchyService:
         self.repository.create_revision(entity_type=entity_type, entity_id=entity_id, parent_revision_number=None)
         updated = self._require_entity(entity_type, entity_id)
         self._mark_index_stale(updated.book_id, reason=invalidation_reason)
+        self._refresh_hierarchy_vectors(entity_type=entity_type)
         return updated
 
     def _update_current_state_entity(self, *, entity_type: str, entity_id: str, expected_version: int, invalidation_reason: str, update_operation):
@@ -1013,7 +1024,25 @@ class BookHierarchyService:
             )
         updated = self._require_entity(entity_type, entity_id)
         self._mark_index_stale(updated.book_id, reason=invalidation_reason)
+        self._refresh_hierarchy_vectors(entity_type=entity_type)
         return updated
+
+    def _refresh_hierarchy_vectors(self, *, entity_type: str) -> None:
+        if entity_type not in self._HIERARCHY_VECTOR_ENTITY_TYPES:
+            return
+        try:
+            try:
+                index_hierarchy_content = import_module("scripts.data_modules.rag_adapter").index_hierarchy_content
+            except ImportError:  # pragma: no cover
+                index_hierarchy_content = import_module("data_modules.rag_adapter").index_hierarchy_content
+            asyncio.run(index_hierarchy_content(self.project_root))
+        except Exception:
+            logger.warning(
+                "Failed to refresh hierarchy vectors after %s change for project %s",
+                entity_type,
+                self.project_root,
+                exc_info=True,
+            )
 
     def _mark_index_stale(self, book_id: str, *, reason: str):
         if self._index_invalidation_suspensions > 0:

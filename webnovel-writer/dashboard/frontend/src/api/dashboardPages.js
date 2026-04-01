@@ -1,4 +1,4 @@
-import { requestJSON as baseRequestJSON, toNetworkError } from './http.js'
+import { requestJSON as baseRequestJSON } from './http.js'
 
 function toInt(value, fallback = 0) {
     const num = Number(value)
@@ -127,22 +127,20 @@ export function formatApiError(error, fallback = '请求失败，请稍后重试
     return `${message}${code}`
 }
 
-export async function requestJSON(path, { method = 'GET', query, body, signal } = {}) {
-    try {
-        return await baseRequestJSON(path, { method, query, body, signal })
-    } catch (error) {
-        if (error instanceof DashboardApiError) throw error
-        const wrapped = new DashboardApiError(
-            error.message || '请求失败',
-            {
-                status: error.status || 0,
-                errorCode: error.errorCode || 'dashboard_api_error',
-                details: error.details || null,
-            },
-        )
-        throw wrapped
-    }
+function toDashboardApiError(error) {
+    if (error instanceof DashboardApiError) return error
+    return new DashboardApiError(error?.message || '请求失败', {
+        status: error?.status || 0,
+        errorCode: error?.errorCode || 'dashboard_api_error',
+        details: error?.details || null,
+    })
 }
+
+export const requestJSON = (path, options = {}) => (
+    baseRequestJSON(path, options).catch(error => {
+        throw toDashboardApiError(error)
+    })
+)
 
 export async function fetchDashboardOverview(options = {}) {
     const payload = await requestJSON('/api/dashboard/overview', {

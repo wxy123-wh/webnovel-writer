@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+# pyright: reportMissingImports=false, reportImplicitRelativeImport=false
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +55,15 @@ def load_context_payload(project_root: Path, chapter_num: int) -> dict[str, Any]
 def refresh_index(project_root: Path) -> dict[str, Any]:
     try:
         from data_modules.incremental_indexer import IncrementalIndexer
+        from data_modules.rag_adapter import index_hierarchy_content
     except ImportError:  # pragma: no cover
         from scripts.data_modules.incremental_indexer import IncrementalIndexer
+        from scripts.data_modules.rag_adapter import index_hierarchy_content
 
-    return IncrementalIndexer(project_root).index_incremental()
+    file_result = IncrementalIndexer(project_root).index_incremental()
+    hierarchy_result = asyncio.run(index_hierarchy_content(project_root))
+    return {
+        **file_result,
+        "file_result": file_result,
+        "hierarchy_result": hierarchy_result,
+    }

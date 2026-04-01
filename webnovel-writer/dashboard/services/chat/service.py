@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import inspect
 import re
-from collections.abc import Generator
+from collections.abc import Callable, Generator, Iterator
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -18,6 +19,8 @@ from .streaming import (
     EVENT_MESSAGE_COMPLETE,
     EVENT_MESSAGE_ERROR,
     EVENT_TEXT_DELTA,
+    EVENT_TOOL_CALL,
+    EVENT_TOOL_RESULT,
     ChatStreamAdapter,
 )
 
@@ -26,6 +29,16 @@ class ChatOrchestrationService:
     """Coordinate chat persistence, generation, and skill metadata."""
 
     _BASE_SYSTEM_PROMPT = "你是网文写作助手。根据项目设定和大纲辅助创作。严格遵循已挂载 Skill 的指令。"
+    _HIERARCHY_TOOL_PROMPT = """当用户要求读取、列出、新建或修改层级内容时，不要依赖记忆或自行假设当前数据，必须优先通过 hierarchy 工具读取最新内容后再回答或执行。
+
+适用场景包括但不限于：大纲（outline）、设定（setting）、canon，以及章节/正文相关的层级内容查询与改写请求。
+
+具体要求：
+1. 需要查看当前层级内容时，先调用 hierarchy_list 或 hierarchy_read。
+2. 需要新建设定/大纲/canon 时，调用 hierarchy_create。
+3. 需要修改现有设定/大纲/canon 时，先读取再调用 hierarchy_update，避免覆盖错误内容。
+4. 如果工具返回错误、缺少 ID、或当前请求不在工具支持范围内，要明确告知用户缺少什么信息，不要伪造结果。
+5. 严禁删除层级内容。"""
     _MAX_SKILL_INSTRUCTION_CHARS = 4000
     _SKILL_DRAFT_SYSTEM_PROMPT = """你是一个 Skill 设计助手。你的任务是根据用户要求，产出一个可保存到 Skills Registry 的结构化 skill 草稿。\n\n输出必须是严格 JSON 对象，且只能包含这些字段：\n- reply: 中文简短说明，告诉用户你生成或更新了什么\n- skill_id: 仅使用小写字母、数字、连字符，形如 scene-beats\n- name: 给用户看的技能名称\n- description: 一句简洁说明这个技能做什么\n- instruction_template: 完整的技能模板指令，使用 Markdown 文本\n\n要求：\n1. 如果当前草稿已有字段，优先在其基础上迭代，不要无故清空已有内容。\n2. 如果用户只要求修改部分内容，只更新相关字段，其余字段尽量保留。\n3. instruction_template 必须是可以直接保存的完整内容，不要输出解释性前后缀。\n4. 不要输出 Markdown 代码块，不要输出 JSON 之外的任何文字。"""
     _IMMEDIATE_CHILDREN = {
@@ -88,17 +101,23 @@ class ChatOrchestrationService:
 
         adapter = ChatStreamAdapter(config=DataModulesConfig(project_root=self.project_root))
         collected_text = ""
+        collected_parts: list[dict[str, object]] = []
         completed = False
         error_payload: dict[str, str] | None = None
-
-        for event_str in adapter.stream_chat(
-            messages=self._messages_for_llm(chat_id, prepared_workflow),
-            message_id=assistant_message_id,
+        for event_str in self._stream_chat_events(
+            adapter=adapter,
             chat_id=chat_id,
+            message_id=assistant_message_id,
+            messages=self._messages_for_llm(chat_id, prepared_workflow),
+            workflow=prepared_workflow,
         ):
             event_type, payload = self._parse_sse_event(event_str)
             if event_type == EVENT_TEXT_DELTA:
                 collected_text += str(payload.get("delta") or "")
+            elif event_type == EVENT_TOOL_CALL:
+                collected_parts.append({"type": "tool_call", "payload": dict(payload)})
+            elif event_type == EVENT_TOOL_RESULT:
+                collected_parts.append({"type": "tool_result", "payload": dict(payload)})
             elif event_type == EVENT_MESSAGE_COMPLETE:
                 completed = True
             elif event_type == EVENT_MESSAGE_ERROR:
@@ -123,7 +142,7 @@ class ChatOrchestrationService:
                 chat_id=chat_id,
                 message_id=assistant_message_id,
                 status="complete",
-                parts=self._finalize_workflow_parts(prepared_workflow, collected_text),
+                parts=self._finalize_response_parts(prepared_workflow, collected_text, collected_parts),
             )
 
     def get_chat_skills(self, chat_id: str) -> list[dict]:
@@ -225,6 +244,10 @@ class ChatOrchestrationService:
         workflow_context = self._workflow_context_text(workflow)
         if workflow_context:
             sections.append(workflow_context)
+
+        hierarchy_tool_guidance = self._hierarchy_tool_guidance_text(workflow)
+        if hierarchy_tool_guidance:
+            sections.append(hierarchy_tool_guidance)
 
         return "\n\n".join(section for section in sections if section)
 
@@ -512,6 +535,8 @@ class ChatOrchestrationService:
         with repository._connect() as connection:
             created_parts = []
             for index, part in enumerate(parts):
+                payload = part.get("payload")
+                normalized_payload = dict(payload) if isinstance(payload, dict) else {}
                 created_parts.append(
                     repository._insert_part(
                         connection,
@@ -519,7 +544,7 @@ class ChatOrchestrationService:
                         message_id=message_id,
                         seq=index,
                         part_type=cast(Any, str(part["type"])),
-                        payload=dict(part.get("payload") or {}),
+                        payload=normalized_payload,
                     )
                 )
             connection.execute(
@@ -542,16 +567,23 @@ class ChatOrchestrationService:
 
         adapter = ChatStreamAdapter(config=DataModulesConfig(project_root=self.project_root))
         collected_text = ""
+        collected_parts: list[dict[str, object]] = []
         completed = False
         error_payload: dict[str, str] | None = None
-        for event_str in adapter.stream_chat(
-            messages=self._messages_for_llm(chat_id, prepared_workflow),
-            message_id=assistant_message_id,
+        for event_str in self._stream_chat_events(
+            adapter=adapter,
             chat_id=chat_id,
+            message_id=assistant_message_id,
+            messages=self._messages_for_llm(chat_id, prepared_workflow),
+            workflow=prepared_workflow,
         ):
             event_type, payload = self._parse_sse_event(event_str)
             if event_type == EVENT_TEXT_DELTA:
                 collected_text += str(payload.get("delta") or "")
+            elif event_type == EVENT_TOOL_CALL:
+                collected_parts.append({"type": "tool_call", "payload": dict(payload)})
+            elif event_type == EVENT_TOOL_RESULT:
+                collected_parts.append({"type": "tool_result", "payload": dict(payload)})
             elif event_type == EVENT_MESSAGE_COMPLETE:
                 completed = True
             elif event_type == EVENT_MESSAGE_ERROR:
@@ -575,11 +607,18 @@ class ChatOrchestrationService:
             chat_id=chat_id,
             message_id=assistant_message_id,
             status="complete",
-            parts=self._finalize_workflow_parts(prepared_workflow, collected_text),
+            parts=self._finalize_response_parts(prepared_workflow, collected_text, collected_parts),
         )
 
-    def _finalize_workflow_parts(self, workflow: dict[str, Any] | None, collected_text: str) -> list[dict[str, object]]:
-        parts: list[dict[str, object]] = [{"type": "text", "payload": {"text": collected_text}}]
+    def _finalize_response_parts(
+        self,
+        workflow: dict[str, Any] | None,
+        collected_text: str,
+        collected_parts: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        parts = list(collected_parts)
+        if collected_text or not parts:
+            parts.append({"type": "text", "payload": {"text": collected_text}})
         if workflow is None:
             return parts
         payload = self._parse_workflow_payload(collected_text)
@@ -594,6 +633,52 @@ class ChatOrchestrationService:
             }
         )
         return parts
+
+    @staticmethod
+    def _hierarchy_tools_for_chat(workflow: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+        if workflow is not None:
+            return None
+        return get_hierarchy_tool_definitions()
+
+    def _hierarchy_tool_dispatcher(
+        self,
+        workflow: dict[str, Any] | None,
+    ) -> Callable[[str, dict[str, Any]], dict[str, Any]] | None:
+        if workflow is not None:
+            return None
+        return self.dispatch_hierarchy_tool
+
+    def _stream_chat_events(
+        self,
+        *,
+        adapter: ChatStreamAdapter,
+        chat_id: str,
+        message_id: str,
+        messages: list[dict[str, str]],
+        workflow: dict[str, Any] | None,
+    ) -> Iterator[str]:
+        tools = self._hierarchy_tools_for_chat(workflow)
+        tool_dispatcher = self._hierarchy_tool_dispatcher(workflow)
+        stream_parameters = inspect.signature(adapter.stream_chat).parameters
+        supports_tool_kwargs = "tools" in stream_parameters and "tool_dispatcher" in stream_parameters
+        if tools and tool_dispatcher is not None and supports_tool_kwargs:
+            return adapter.stream_chat(
+                messages=messages,
+                message_id=message_id,
+                chat_id=chat_id,
+                tools=tools,
+                tool_dispatcher=tool_dispatcher,
+            )
+        return adapter.stream_chat(
+            messages=messages,
+            message_id=message_id,
+            chat_id=chat_id,
+        )
+
+    def _hierarchy_tool_guidance_text(self, workflow: dict[str, Any] | None) -> str:
+        if workflow is not None:
+            return ""
+        return self._HIERARCHY_TOOL_PROMPT
 
     @staticmethod
     def _parse_workflow_payload(text: str) -> dict[str, Any]:
@@ -744,8 +829,8 @@ class ChatOrchestrationService:
         for item in items:
             entity_id = str(getattr(item, f"{entity_type}_id", "") or getattr(item, "canon_id", ""))
             synopsis = str(item.body or "")[:200]
-            result.append({"id": entity_id, "title": str(item.title or ""), "synopsis": synopsis})
-        return {"items": result}
+            result.append({"id": entity_id, "entity_type": entity_type, "title": str(item.title or ""), "synopsis": synopsis})
+        return {"entity_type": entity_type, "items": result}
 
     def _tool_hierarchy_read(self, arguments: dict[str, Any]) -> dict[str, Any]:
         entity_type = str(arguments.get("entity_type") or "").strip()
@@ -762,6 +847,7 @@ class ChatOrchestrationService:
 
         return {
             "id": entity_id,
+            "entity_type": entity_type,
             "title": str(entity.title or ""),
             "body": str(entity.body or ""),
             "version": entity.version,
@@ -785,6 +871,8 @@ class ChatOrchestrationService:
             return {"error": f"{entity_type} '{entity_id}' not found."}
 
         book_id = str(entity.book_id)
+        previous_title = str(entity.title or "")
+        previous_body = str(entity.body or "")
         update_title = str(title) if title is not None else None
         update_body = str(body) if body is not None else None
 
@@ -812,11 +900,22 @@ class ChatOrchestrationService:
                 )
 
         updated = self.hierarchy_service.repository.get_entity(entity_type, entity_id)
+        next_title = str(updated.title or "") if updated else ""
+        next_body = str(updated.body or "") if updated else ""
+        changes: dict[str, dict[str, str]] = {}
+        if update_title is not None and previous_title != next_title:
+            changes["title"] = {"before": previous_title, "after": next_title}
+        if update_body is not None and previous_body != next_body:
+            changes["body"] = {"before": previous_body, "after": next_body}
         return {
             "id": entity_id,
-            "title": str(updated.title or "") if updated else "",
+            "entity_type": entity_type,
+            "title": next_title,
+            "body": next_body,
             "version": updated.version if updated else None,
             "updated": True,
+            "changes": changes,
+            "change_summary": f"Updated {entity_type} '{entity_id}' with {', '.join(changes.keys()) or 'no field changes' }.",
         }
 
     def _tool_hierarchy_create(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -846,8 +945,11 @@ class ChatOrchestrationService:
 
         return {
             "id": entity_id,
+            "entity_type": entity_type,
             "title": title,
+            "body": body,
             "created": True,
+            "change_summary": f"Created new {entity_type} '{title}' ({entity_id}).",
         }
 
     def _require_active_book_id(self) -> str:

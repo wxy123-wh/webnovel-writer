@@ -192,8 +192,8 @@ export default function NewBookWizard({ onClose, onSuccess }) {
         }
 
         try {
-            await initBook(payload)
-            onSuccess?.()
+            const result = await initBook(payload)
+            await onSuccess?.(result)
         } catch (err) {
             const msg = err?.status === 409
                 ? '项目目录已存在，请选择其他路径。'

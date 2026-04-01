@@ -2,9 +2,20 @@ import { useEffect, useState } from 'react'
 import { getChatSkills, getMessages } from '../../api/chat.js'
 import Composer from './Composer.jsx'
 import MessageList from './MessageList.jsx'
-import SkillDrawer from './SkillDrawer.jsx'
 import { useChatState } from './useChatState.js'
 import { useChatStream } from './useChatStream.js'
+
+function openSkillLibrary(chatId) {
+    if (typeof window === 'undefined' || !chatId) return
+    window.location.hash = `#/chat/skills/${chatId}`
+}
+
+function openSkillDetail(chatId, skill) {
+    if (typeof window === 'undefined' || !chatId || !skill?.skill_id) return
+    const safeSkillId = encodeURIComponent(skill.skill_id)
+    const safeSource = encodeURIComponent(skill.source || 'workspace')
+    window.location.hash = `#/chat/skills/${chatId}/${safeSkillId}/${safeSource}`
+}
 
 export default function ChatShell({ chatId, projectSummary = null }) {
     const {
@@ -21,7 +32,6 @@ export default function ChatShell({ chatId, projectSummary = null }) {
         clearSyncError,
         setLoading,
     } = useChatState()
-    const [skillOpen, setSkillOpen] = useState(false)
     const [mountedSkills, setMountedSkills] = useState([])
 
     const { sendStream, abort } = useChatStream({
@@ -76,8 +86,12 @@ export default function ChatShell({ chatId, projectSummary = null }) {
         <div className="chat-shell">
             <div className="chat-main card">
                 <div className="chat-toolbar">
-                    <button className="page-btn" onClick={() => setSkillOpen(prev => !prev)} type="button">
-                        ⚡ Skills
+                    <button
+                        className="page-btn"
+                        onClick={() => openSkillLibrary(chatId)}
+                        type="button"
+                    >
+                        技能页面
                     </button>
                 </div>
                 <div className="chat-skill-summary">
@@ -86,14 +100,19 @@ export default function ChatShell({ chatId, projectSummary = null }) {
                             <span className="chat-skill-summary-label">当前技能约束</span>
                             <div className="chat-skill-chip-list">
                                 {mountedSkills.map(skill => (
-                                    <span className="chat-skill-chip" key={`${skill.source}:${skill.skill_id}`}>
+                                    <button
+                                        className="chat-skill-chip chat-skill-chip-button"
+                                        key={`${skill.source}:${skill.skill_id}`}
+                                        onClick={() => openSkillDetail(chatId, skill)}
+                                        type="button"
+                                    >
                                         {skill.name || skill.skill_id}
-                                    </span>
+                                    </button>
                                 ))}
                             </div>
                         </>
                     ) : (
-                        <span className="chat-skill-summary-empty">当前未启用额外技能；你可以直接开聊，或打开 Skills 为这轮对话补充约束。</span>
+                        <span className="chat-skill-summary-empty">当前未启用额外技能；可通过上方“技能页面”查看全部技能列表。</span>
                     )}
                 </div>
                 {state.isLoading ? <div className="loading">消息加载中...</div> : <MessageList messages={state.messages} projectSummary={projectSummary} onStarterSelect={sendStream} />}
@@ -128,12 +147,6 @@ export default function ChatShell({ chatId, projectSummary = null }) {
                 ) : null}
                 <Composer onSend={sendStream} disabled={state.isStreaming} />
             </div>
-            <SkillDrawer
-                chatId={chatId}
-                open={skillOpen}
-                onClose={() => setSkillOpen(false)}
-                onSkillsChanged={skills => setMountedSkills(Array.isArray(skills) ? skills.filter(skill => skill.enabled) : [])}
-            />
         </div>
     )
 }

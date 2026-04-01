@@ -6,10 +6,11 @@ import CreationDeskPage from './pages/CreationDeskPage.jsx'
 import DataPanelPage from './pages/DataPanelPage.jsx'
 import SkillsPage from './pages/SkillsPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
+import SkillDetailPage from './pages/SkillDetailPage.jsx'
+import SkillLibraryPage from './pages/SkillLibraryPage.jsx'
 
 const DEFAULT_ROUTE = 'chat'
 
-// P2-E 修复：用内联 SVG 图标替换原来的字母占位符，提升商业产品专业感
 const Icons = {
     chat: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -53,56 +54,114 @@ const ROUTES = [
 
 const ROUTE_MAP = new Map(ROUTES.map(route => [route.id, route]))
 
+function parseHashRoute(hashValue) {
+    const rawRoute = String(hashValue || '').replace(/^#\/?/, '').trim()
+    const [routeId = '', ...restParts] = rawRoute.split('/').filter(Boolean)
+    return {
+        routeId: routeId.toLowerCase(),
+        subPath: restParts,
+    }
+}
+
 function normalizeRoute(routeId) {
     const safeId = (routeId || '').trim().toLowerCase()
     return ROUTE_MAP.has(safeId) ? safeId : DEFAULT_ROUTE
 }
 
-function readRouteFromHash() {
-    if (typeof window === 'undefined') return DEFAULT_ROUTE
-    const route = window.location.hash.replace(/^#\/?/, '')
-    return normalizeRoute(route)
+function readRouteStateFromHash() {
+    if (typeof window === 'undefined') {
+        return { routeId: DEFAULT_ROUTE, routeParams: {} }
+    }
+
+    const { routeId, subPath } = parseHashRoute(window.location.hash)
+    const normalizedRouteId = normalizeRoute(routeId)
+
+    if (normalizedRouteId === 'chat' && subPath[0] === 'skills' && subPath.length === 2) {
+        return {
+            routeId: normalizedRouteId,
+            routeParams: {
+                view: 'skill-library',
+                chatId: subPath[1] || '',
+            },
+        }
+    }
+
+    if (normalizedRouteId === 'chat' && subPath[0] === 'skills' && subPath.length >= 4) {
+        return {
+            routeId: normalizedRouteId,
+            routeParams: {
+                view: 'skill-detail',
+                chatId: subPath[1] || '',
+                skillId: decodeURIComponent(subPath[2] || ''),
+                source: decodeURIComponent(subPath[3] || ''),
+            },
+        }
+    }
+
+    return { routeId: normalizedRouteId, routeParams: {} }
 }
 
-function writeRouteToHash(routeId) {
+function writeRouteToHash(routeId, routeParams = {}) {
     if (typeof window === 'undefined') return
-    const nextHash = `#/${normalizeRoute(routeId)}`
+
+    const normalizedRouteId = normalizeRoute(routeId)
+    let nextHash = `#/${normalizedRouteId}`
+
+    if (normalizedRouteId === 'chat' && routeParams?.view === 'skill-library') {
+        const chatId = String(routeParams.chatId || '').trim()
+        nextHash = `#/chat/skills/${chatId}`
+    }
+
+    if (normalizedRouteId === 'chat' && routeParams?.view === 'skill-detail') {
+        const chatId = String(routeParams.chatId || '').trim()
+        const skillId = encodeURIComponent(String(routeParams.skillId || '').trim())
+        const source = encodeURIComponent(String(routeParams.source || '').trim())
+        nextHash = `#/chat/skills/${chatId}/${skillId}/${source}`
+    }
+
     if (window.location.hash !== nextHash) {
         window.location.hash = nextHash
     }
 }
 
 export default function App() {
-    const [routeId, setRouteId] = useState(() => readRouteFromHash())
+    const [routeState, setRouteState] = useState(() => readRouteStateFromHash())
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined
 
         if (!window.location.hash) {
-            writeRouteToHash(routeId)
+            writeRouteToHash(routeState.routeId, routeState.routeParams)
         }
 
         const handleHashChange = () => {
-            setRouteId(readRouteFromHash())
+            setRouteState(readRouteStateFromHash())
         }
 
         window.addEventListener('hashchange', handleHashChange)
         return () => {
             window.removeEventListener('hashchange', handleHashChange)
         }
-    }, [routeId])
+    }, [routeState.routeId, routeState.routeParams])
 
     const activeRoute = useMemo(
-        () => ROUTE_MAP.get(routeId) || ROUTE_MAP.get(DEFAULT_ROUTE),
-        [routeId],
+        () => ROUTE_MAP.get(routeState.routeId) || ROUTE_MAP.get(DEFAULT_ROUTE),
+        [routeState.routeId],
     )
-    const ActivePage = activeRoute.component
+
+    const pageContent = routeState.routeId === 'chat' && routeState.routeParams?.view === 'skill-library'
+        ? <SkillLibraryPage chatId={routeState.routeParams.chatId} />
+        : routeState.routeId === 'chat' && routeState.routeParams?.view === 'skill-detail'
+            ? <SkillDetailPage chatId={routeState.routeParams.chatId} skillId={routeState.routeParams.skillId} source={routeState.routeParams.source} />
+            : (() => {
+                const ActivePage = activeRoute.component
+                return <ActivePage />
+            })()
 
     return (
         <ContextMenuProvider>
             <div className="app-layout">
                 <aside className="sidebar">
-                    {/* P3-A 修复：sidebar 标题改为中文品牌名，去掉硬编码英文 */}
                     <div className="sidebar-header">
                         <h1>网文创作台</h1>
                         <div className="subtitle">Webnovel Dashboard</div>
@@ -112,16 +171,15 @@ export default function App() {
                         {ROUTES.map(item => (
                             <button
                                 key={item.id}
-                                className={`nav-item ${routeId === item.id ? 'active' : ''}`}
+                                className={`nav-item ${routeState.routeId === item.id && !routeState.routeParams?.view ? 'active' : ''}`}
                                 onClick={() => {
-                                    setRouteId(item.id)
+                                    setRouteState({ routeId: item.id, routeParams: {} })
                                     writeRouteToHash(item.id)
                                 }}
                                 type="button"
-                                aria-current={routeId === item.id ? 'page' : undefined}
+                                aria-current={routeState.routeId === item.id && !routeState.routeParams?.view ? 'page' : undefined}
                                 title={item.label}
                             >
-                                {/* P2-E 修复：使用 SVG 图标替换字母占位符 */}
                                 <span className="icon" aria-hidden="true">{item.icon}</span>
                                 <span>{item.label}</span>
                             </button>
@@ -139,9 +197,8 @@ export default function App() {
                 </aside>
 
                 <main className="main-content">
-                    {/* P1-G 修复：ErrorBoundary 包裹，防止页面组件崩溃导致整个 App 白屏 */}
-                    <ErrorBoundary key={routeId}>
-                        <ActivePage />
+                    <ErrorBoundary key={`${routeState.routeId}:${routeState.routeParams?.view || ''}:${routeState.routeParams?.chatId || ''}:${routeState.routeParams?.skillId || ''}:${routeState.routeParams?.source || ''}`}>
+                        {pageContent}
                     </ErrorBoundary>
                 </main>
             </div>

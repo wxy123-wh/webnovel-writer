@@ -1,4 +1,4 @@
-import { createRequestUrl } from './http.js'
+import { createRequestUrl, requestJSON as baseRequestJSON } from './http.js'
 
 const API_BASE = '/api/chat'
 
@@ -15,37 +15,22 @@ export class ChatApiError extends Error {
     }
 }
 
-async function request(path, options = {}) {
-    const requestOptions = {
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...(options.headers || {}),
-        },
-    }
-
-    let response
+async function request(path, { method = 'GET', body } = {}) {
     try {
-        response = await fetch(buildURL(path), requestOptions)
+        return await baseRequestJSON(`${API_BASE}${path}`, {
+            method,
+            body,
+            catchNetwork: true,
+            networkMessage: '无法连接到 Chat 服务，请确认后端已启动。',
+        })
     } catch (error) {
-        throw new ChatApiError('无法连接到 Chat 服务，请确认后端已启动。', 0, 'network_error')
+        if (error instanceof ChatApiError) throw error
+        throw new ChatApiError(
+            error.message || 'Chat API request failed.',
+            error.status || 0,
+            error.errorCode || 'chat_api_error',
+        )
     }
-
-    if (!response.ok) {
-        let code = 'unknown'
-        let message = `HTTP ${response.status}`
-        try {
-            const body = await response.json()
-            code = body.error_code || code
-            message = body.message || message
-        } catch {
-            // ignore malformed error payloads
-        }
-        throw new ChatApiError(message, response.status, code)
-    }
-
-    if (response.status === 204) return null
-    return response.json()
 }
 
 export async function listChats() {
@@ -57,7 +42,7 @@ export async function createChat({ title = '', profile = null, skillIds = null }
     const body = { title }
     if (profile) body.profile = profile
     if (skillIds) body.skill_ids = skillIds
-    return request('/chats', { method: 'POST', body: JSON.stringify(body) })
+    return request('/chats', { method: 'POST', body })
 }
 
 export async function deleteChat(chatId) {
@@ -82,7 +67,7 @@ export async function getChatSkills(chatId) {
 export async function updateChatSkills(chatId, skills) {
     return request(`/chats/${chatId}/skills`, {
         method: 'PATCH',
-        body: JSON.stringify({ skills }),
+        body: { skills },
     })
 }
 

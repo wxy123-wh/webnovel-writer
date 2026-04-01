@@ -21,18 +21,15 @@
 python -X utf8 webnovel-writer/scripts/webnovel.py init ./webnovel-project "My Book" "Genre"
 ```
 
-### 2. 使用唯一推荐的本地启动命令
+### 2. 使用仓库根目录启动脚本
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File running/init.ps1 -ProjectRoot ./webnovel-project -StartDashboard
+.\start-webnovel.bat .\webnovel-project
 ```
 
-这条命令会在仓库根目录完成以下工作：
+这条命令会在仓库根目录直接启动 Dashboard：
 
-- 检查 Python / Node 前端工具链
-- 安装 Python 依赖
-- 安装并构建 Dashboard 前端（必要时）
-- 绑定当前工作区到你的小说项目
+- 校验目标项目根目录
 - 通过统一包装入口 `webnovel-writer/scripts/webnovel.py dashboard ...` 启动应用
 
 启动后访问 `http://127.0.0.1:8765`。
@@ -107,7 +104,7 @@ python -X utf8 webnovel-writer/scripts/webnovel.py --project-root /path/to/proje
 - CLI 参考：`docs/CLI_REFERENCE.md`
 - 商业化说明：`docs/COMMERCIALIZATION.md`
 - 开发说明：`webnovel-writer/DEVELOPMENT.md`
-- 运行脚本说明：`running/workflow.md`
+- 仓库根目录启动脚本：`start-webnovel.bat`
 
 ## 产品定位
 

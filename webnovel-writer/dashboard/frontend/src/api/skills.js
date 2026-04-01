@@ -1,4 +1,4 @@
-import { requestJSON as baseRequestJSON, toNetworkError } from './http.js'
+import { requestJSON as baseRequestJSON } from './http.js'
 
 const API_ROOT = '/api/skills'
 const DEFAULT_WORKSPACE_ID = 'workspace-default'
@@ -76,22 +76,16 @@ function normalizeWorkspaceContext(options = {}) {
     }
 }
 
-async function requestJSON(path, { method = 'GET', query, body } = {}) {
-    try {
-        return await baseRequestJSON(path, { method, query, body })
-    } catch (error) {
-        if (error instanceof SkillsApiError) throw error
-        const errorCode = error.errorCode || 'skills_api_error'
-        throw new SkillsApiError(
-            error.message || 'Skills API request failed.',
-            {
-                status: error.status || 0,
-                errorCode,
-                errorType: inferErrorType({ status: error.status || 0, errorCode }),
-                details: error.details || null,
-            },
-        )
-    }
+function toSkillsApiError(error) {
+    if (error instanceof SkillsApiError) return error
+    const status = error?.status || 0
+    const errorCode = error?.errorCode || 'skills_api_error'
+    return new SkillsApiError(error?.message || 'Skills API request failed.', {
+        status,
+        errorCode,
+        errorType: inferErrorType({ status, errorCode }),
+        details: error?.details || null,
+    })
 }
 
 function normalizeSkillItem(item = {}) {
@@ -117,15 +111,20 @@ function normalizeSkillDraft(item = {}) {
 
 export async function listSkills(options = {}) {
     const workspace = normalizeWorkspaceContext(options)
-    const payload = await requestJSON(API_ROOT, {
-        query: {
-            workspace_id: workspace.workspace_id,
-            project_root: workspace.project_root,
-            enabled: options.enabled,
-            limit: options.limit ?? 100,
-            offset: options.offset ?? 0,
-        },
-    })
+    let payload
+    try {
+        payload = await baseRequestJSON(API_ROOT, {
+            query: {
+                workspace_id: workspace.workspace_id,
+                project_root: workspace.project_root,
+                enabled: options.enabled,
+                limit: options.limit ?? 100,
+                offset: options.offset ?? 0,
+            },
+        })
+    } catch (error) {
+        throw toSkillsApiError(error)
+    }
 
     return {
         status: payload.status || 'ok',
@@ -135,26 +134,36 @@ export async function listSkills(options = {}) {
 }
 
 export async function createSkill(payload) {
-    const response = await requestJSON(API_ROOT, {
-        method: 'POST',
-        body: {
-            skill_id: String(payload?.skill_id || '').trim(),
-            name: String(payload?.name || '').trim(),
-            description: String(payload?.description || '').trim(),
-            instruction_template: String(payload?.instruction_template || '').trim(),
-        },
-    })
+    let response
+    try {
+        response = await baseRequestJSON(API_ROOT, {
+            method: 'POST',
+            body: {
+                skill_id: String(payload?.skill_id || '').trim(),
+                name: String(payload?.name || '').trim(),
+                description: String(payload?.description || '').trim(),
+                instruction_template: String(payload?.instruction_template || '').trim(),
+            },
+        })
+    } catch (error) {
+        throw toSkillsApiError(error)
+    }
     return normalizeSkillItem(response)
 }
 
 export async function generateSkillDraft(payload) {
-    const response = await requestJSON(`${API_ROOT}/draft`, {
-        method: 'POST',
-        body: {
-            prompt: String(payload?.prompt || '').trim(),
-            current_draft: normalizeSkillDraft(payload?.currentDraft || {}),
-        },
-    })
+    let response
+    try {
+        response = await baseRequestJSON(`${API_ROOT}/draft`, {
+            method: 'POST',
+            body: {
+                prompt: String(payload?.prompt || '').trim(),
+                current_draft: normalizeSkillDraft(payload?.currentDraft || {}),
+            },
+        })
+    } catch (error) {
+        throw toSkillsApiError(error)
+    }
 
     return {
         reply: String(response?.reply || '').trim(),
@@ -171,7 +180,11 @@ export async function deleteSkill(skillId) {
             errorType: 'validation',
         })
     }
-    await requestJSON(`${API_ROOT}/${encodeURIComponent(normalizedSkillId)}`, {
-        method: 'DELETE',
-    })
+    try {
+        await baseRequestJSON(`${API_ROOT}/${encodeURIComponent(normalizedSkillId)}`, {
+            method: 'DELETE',
+        })
+    } catch (error) {
+        throw toSkillsApiError(error)
+    }
 }

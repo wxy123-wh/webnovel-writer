@@ -215,6 +215,49 @@ def _resolve_project_root_from_pointer() -> Path | None:
     return None
 
 
+def _resolve_workspace_root_for_pointer(project_root: Path) -> Path:
+    for candidate in (project_root, *project_root.parents):
+        if (candidate / ".codex").is_dir():
+            return candidate
+    if project_root.parent != project_root:
+        return project_root.parent
+    return project_root
+
+
+def _write_project_root_pointer(project_root: Path) -> None:
+    pointer_paths = {
+        Path.cwd() / ".codex" / ".webnovel-current-project",
+        _resolve_workspace_root_for_pointer(project_root) / ".codex" / ".webnovel-current-project",
+    }
+    for pointer in pointer_paths:
+        pointer.parent.mkdir(parents=True, exist_ok=True)
+        pointer.write_text(str(project_root), encoding="utf-8")
+
+
+def _copy_generation_settings(source_root: Path | None, target_root: Path) -> None:
+    if source_root is None or source_root == target_root:
+        return
+
+    settings = runtime_service_module._resolve_generation_settings(project_root=source_root)
+    updates = {
+        key: _normalize_optional_env_value(settings.get(key))
+        for key in GENERATION_ENV_KEYS
+    }
+    if any(value is not None for value in updates.values()):
+        _write_project_env_values(target_root, updates)
+
+
+def _rebind_project_root(app: FastAPI, project_root: Path) -> None:
+    normalized_root = project_root.resolve()
+    app.state.project_root = normalized_root
+    _write_project_root_pointer(normalized_root)
+
+    _watcher.stop()
+    webnovel_path = normalized_root / ".webnovel"
+    if webnovel_path.is_dir():
+        _watcher.start(webnovel_path, asyncio.get_running_loop())
+
+
 def create_app(
     project_root: str | Path | None = None,
     allowed_origins: list[str] | None = None,
@@ -1087,6 +1130,8 @@ def create_app(
                 details={"project_dir": str(target_path)},
             )
 
+        previous_project_root = getattr(request.app.state, "project_root", None)
+
         # --- 调用 init_project ---
         try:
             init_project(_project_dir, _title, _genre, **kwargs)
@@ -1122,6 +1167,9 @@ def create_app(
                 ).fetchone()
                 if row:
                     book_id = row["book_id"]
+
+        _copy_generation_settings(previous_project_root, project_root)
+        _rebind_project_root(request.app, project_root)
 
         return {
             "project_root": str(project_root),
