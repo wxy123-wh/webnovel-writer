@@ -11,6 +11,7 @@ from core.book_hierarchy import BookHierarchyConflictError, BookHierarchyService
 from core.agent_runtime.chat_models import Message
 from core.agent_runtime.chat_repository import generate_id
 from core.skill_system import ChatSkillRegistry
+from core.skill_system.chat_skill_models import get_hierarchy_tool_definitions
 from scripts.data_modules.config import DataModulesConfig
 
 from .streaming import (
@@ -41,6 +42,8 @@ class ChatOrchestrationService:
             self.error_code = error_code
             self.message = message
             self.details = details or {}
+
+    _VALID_ENTITY_TYPES = {"outline", "setting", "canon_entry"}
 
     def __init__(self, project_root: Path):
         self.project_root = Path(project_root)
@@ -700,3 +703,160 @@ class ChatOrchestrationService:
                 }
             )
         return enriched
+
+    # ── Hierarchy tool dispatch ─────────────────────────────────────
+
+    def dispatch_hierarchy_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute a hierarchy CRUD tool call and return the result."""
+        try:
+            match tool_name:
+                case "hierarchy_list":
+                    return self._tool_hierarchy_list(arguments)
+                case "hierarchy_read":
+                    return self._tool_hierarchy_read(arguments)
+                case "hierarchy_update":
+                    return self._tool_hierarchy_update(arguments)
+                case "hierarchy_create":
+                    return self._tool_hierarchy_create(arguments)
+                case _:
+                    return {"error": f"Unknown tool: {tool_name}"}
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def _tool_hierarchy_list(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        entity_type = str(arguments.get("entity_type") or "").strip()
+        if entity_type not in self._VALID_ENTITY_TYPES:
+            return {"error": f"Invalid entity_type '{entity_type}'. Must be one of: {', '.join(sorted(self._VALID_ENTITY_TYPES))}"}
+
+        book_id = self._require_active_book_id()
+        repo = self.hierarchy_service.repository
+        match entity_type:
+            case "outline":
+                items = repo.list_outlines(book_id=book_id)
+            case "setting":
+                items = repo.list_settings(book_id=book_id)
+            case "canon_entry":
+                items = repo.list_canon_entries(book_id=book_id)
+            case _:
+                items = []
+
+        result = []
+        for item in items:
+            entity_id = str(getattr(item, f"{entity_type}_id", "") or getattr(item, "canon_id", ""))
+            synopsis = str(item.body or "")[:200]
+            result.append({"id": entity_id, "title": str(item.title or ""), "synopsis": synopsis})
+        return {"items": result}
+
+    def _tool_hierarchy_read(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        entity_type = str(arguments.get("entity_type") or "").strip()
+        entity_id = str(arguments.get("entity_id") or "").strip()
+
+        if entity_type not in self._VALID_ENTITY_TYPES:
+            return {"error": f"Invalid entity_type '{entity_type}'. Must be one of: {', '.join(sorted(self._VALID_ENTITY_TYPES))}"}
+        if not entity_id:
+            return {"error": "entity_id is required."}
+
+        entity = self.hierarchy_service.repository.get_entity(entity_type, entity_id)
+        if entity is None:
+            return {"error": f"{entity_type} '{entity_id}' not found."}
+
+        return {
+            "id": entity_id,
+            "title": str(entity.title or ""),
+            "body": str(entity.body or ""),
+            "version": entity.version,
+        }
+
+    def _tool_hierarchy_update(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        entity_type = str(arguments.get("entity_type") or "").strip()
+        entity_id = str(arguments.get("entity_id") or "").strip()
+        title = arguments.get("title")
+        body = arguments.get("body")
+
+        if entity_type not in self._VALID_ENTITY_TYPES:
+            return {"error": f"Invalid entity_type '{entity_type}'. Must be one of: {', '.join(sorted(self._VALID_ENTITY_TYPES))}"}
+        if not entity_id:
+            return {"error": "entity_id is required."}
+        if title is None and body is None:
+            return {"error": "At least one of 'title' or 'body' must be provided."}
+
+        entity = self.hierarchy_service.repository.get_entity(entity_type, entity_id)
+        if entity is None:
+            return {"error": f"{entity_type} '{entity_id}' not found."}
+
+        book_id = str(entity.book_id)
+        update_title = str(title) if title is not None else None
+        update_body = str(body) if body is not None else None
+
+        match entity_type:
+            case "outline":
+                self.hierarchy_service.update_outline(
+                    book_id, entity_id,
+                    expected_version=entity.version,
+                    title=update_title,
+                    body=update_body,
+                )
+            case "setting":
+                self.hierarchy_service.update_setting(
+                    book_id, entity_id,
+                    expected_version=entity.version,
+                    title=update_title,
+                    body=update_body,
+                )
+            case "canon_entry":
+                self.hierarchy_service.update_canon_entry(
+                    book_id, entity_id,
+                    expected_version=entity.version,
+                    title=update_title,
+                    body=update_body,
+                )
+
+        updated = self.hierarchy_service.repository.get_entity(entity_type, entity_id)
+        return {
+            "id": entity_id,
+            "title": str(updated.title or "") if updated else "",
+            "version": updated.version if updated else None,
+            "updated": True,
+        }
+
+    def _tool_hierarchy_create(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        entity_type = str(arguments.get("entity_type") or "").strip()
+        title = str(arguments.get("title") or "").strip()
+        body = str(arguments.get("body") or "")
+
+        if entity_type not in self._VALID_ENTITY_TYPES:
+            return {"error": f"Invalid entity_type '{entity_type}'. Must be one of: {', '.join(sorted(self._VALID_ENTITY_TYPES))}"}
+        if not title:
+            return {"error": "title is required."}
+
+        book_id = self._require_active_book_id()
+
+        match entity_type:
+            case "outline":
+                created = self.hierarchy_service.create_outline(book_id, title=title, body=body)
+                entity_id = created.outline_id
+            case "setting":
+                created = self.hierarchy_service.create_setting(book_id, title=title, body=body)
+                entity_id = created.setting_id
+            case "canon_entry":
+                created = self.hierarchy_service.create_canon_entry(book_id, title=title, body=body)
+                entity_id = created.canon_id
+            case _:
+                return {"error": f"Unsupported entity_type '{entity_type}'."}
+
+        return {
+            "id": entity_id,
+            "title": title,
+            "created": True,
+        }
+
+    def _require_active_book_id(self) -> str:
+        """Get the active book root ID for the current project."""
+        book = self.hierarchy_service.repository.get_active_book_root(str(self.project_root))
+        if book is None:
+            raise self.WorkflowChatError(
+                status_code=404,
+                error_code="book_root_not_found",
+                message="No active book root found for this project.",
+            )
+        return str(book.book_id)

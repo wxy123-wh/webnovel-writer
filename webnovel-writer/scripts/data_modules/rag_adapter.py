@@ -1440,6 +1440,161 @@ class RAGAdapter:
             }
 
 
+# ==================== Hierarchy DB 索引 ====================
+
+# hierarchy.db 中可索引的实体类型及其 (table, pk_column, chunk_type) 映射
+_HIERARCHY_ENTITY_TYPES: list[tuple[str, str, str]] = [
+    ("outlines", "outline_id", "outline"),
+    ("settings", "setting_id", "setting"),
+    ("canon_entries", "canon_id", "canon"),
+]
+
+
+def _read_hierarchy_entities(
+    hierarchy_db_path: Path,
+) -> list[dict[str, Any]]:
+    """从 hierarchy.db 读取所有 outlines / settings / canon_entries 实体。
+
+    Returns:
+        每个实体对应一个 dict，包含 table, pk_column, entity_type, entity_id, title, body。
+    """
+    if not hierarchy_db_path.exists():
+        logger.warning("hierarchy.db 不存在: %s", str(hierarchy_db_path))
+        return []
+
+    entities: list[dict[str, Any]] = []
+    conn = sqlite3.connect(str(hierarchy_db_path))
+    try:
+        for table, pk_column, chunk_type in _HIERARCHY_ENTITY_TYPES:
+            try:
+                rows = conn.execute(
+                    f"SELECT {pk_column}, title, body FROM {table}"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                # 表不存在，跳过
+                continue
+            for entity_id, title, body in rows:
+                entities.append(
+                    {
+                        "table": table,
+                        "pk_column": pk_column,
+                        "chunk_type": chunk_type,
+                        "entity_id": str(entity_id),
+                        "title": str(title or ""),
+                        "body": str(body or ""),
+                    }
+                )
+    finally:
+        conn.close()
+
+    return entities
+
+
+async def index_hierarchy_content(
+    project_root: Path | str,
+    *,
+    adapter: RAGAdapter | None = None,
+) -> dict[str, Any]:
+    """将 hierarchy.db 中的 outlines / settings / canon_entries 索引到 vectors.db。
+
+    对每个实体生成一个 chunk，content 为 title + body 拼接，
+    chunk_type 为 "outline" / "setting" / "canon"，
+    source_file 为 "hierarchy.db:{entity_type}:{entity_id}"。
+
+    先删除旧版 hierarchy chunk（按 source_file 前缀匹配），再写入新 chunk。
+
+    Args:
+        project_root: 小说项目根目录
+        adapter: 可选的 RAGAdapter 实例；若不传则自动创建
+
+    Returns:
+        {"stored": int, "deleted": int, "errors": int, "total": int}
+    """
+    from .config import DataModulesConfig
+
+    project_root = Path(project_root).resolve()
+    hierarchy_db_path = project_root / ".webnovel" / "hierarchy.db"
+
+    entities = _read_hierarchy_entities(hierarchy_db_path)
+    if not entities:
+        logger.info("hierarchy.db 无可索引实体: %s", str(hierarchy_db_path))
+        return {"stored": 0, "deleted": 0, "errors": 0, "total": 0}
+
+    # 删除旧的 hierarchy chunk（按 chunk_type 匹配）
+    hierarchy_chunk_types = {"outline", "setting", "canon"}
+    config = adapter.config if adapter else DataModulesConfig.from_project_root(str(project_root))
+    deleted = 0
+    with sqlite3.connect(str(config.vector_db)) as conn:
+        cursor = conn.cursor()
+        for ct in hierarchy_chunk_types:
+            # 先收集 chunk_ids，用于清理 BM25/doc_stats
+            cursor.execute("SELECT chunk_id FROM vectors WHERE chunk_type = ?", (ct,))
+            old_ids = [str(row[0]) for row in cursor.fetchall()]
+            cursor.execute("DELETE FROM vectors WHERE chunk_type = ?", (ct,))
+            deleted += cursor.rowcount
+            if old_ids:
+                placeholders = ",".join(["?"] * len(old_ids))
+                cursor.execute(
+                    f"DELETE FROM bm25_index WHERE chunk_id IN ({placeholders})",
+                    tuple(old_ids),
+                )
+                cursor.execute(
+                    f"DELETE FROM doc_stats WHERE chunk_id IN ({placeholders})",
+                    tuple(old_ids),
+                )
+        conn.commit()
+    logger.info("已删除 %d 条旧 hierarchy chunk", deleted)
+
+    # 构建新 chunk 列表
+    chunks: list[dict[str, Any]] = []
+    for entity in entities:
+        content_parts: list[str] = []
+        if entity["title"]:
+            content_parts.append(entity["title"])
+        if entity["body"]:
+            content_parts.append(entity["body"])
+        content = "\n\n".join(content_parts)
+        if not content.strip():
+            continue
+
+        chunk_id = f"hier_{entity['chunk_type']}_{entity['entity_id']}"
+        chunks.append(
+            {
+                "chunk_id": chunk_id,
+                "chapter": 0,
+                "scene_index": 0,
+                "content": content,
+                "chunk_type": entity["chunk_type"],
+                "source_file": f"hierarchy.db:{entity['chunk_type']}:{entity['entity_id']}",
+            }
+        )
+
+    if not chunks:
+        logger.info("hierarchy.db 实体内容为空，无 chunk 需要写入")
+        return {"stored": 0, "deleted": deleted, "errors": 0, "total": 0}
+
+    # 使用 store_chunks 写入
+    if adapter is None:
+        adapter = RAGAdapter(config)
+
+    stored = await adapter.store_chunks(chunks)
+    errors = len(chunks) - stored
+    result = {
+        "stored": stored,
+        "deleted": deleted,
+        "errors": errors,
+        "total": len(chunks),
+    }
+    logger.info(
+        "hierarchy 索引完成: stored=%d, deleted=%d, errors=%d, total=%d",
+        stored,
+        deleted,
+        errors,
+        len(chunks),
+    )
+    return result
+
+
 # ==================== CLI 接口 ====================
 
 def main():
@@ -1477,12 +1632,15 @@ def main():
         default="hybrid",
     )
     search_parser.add_argument("--top-k", type=int, default=5)
-    search_parser.add_argument("--chunk-type", choices=["scene", "summary"], default=None)
+    search_parser.add_argument("--chunk-type", choices=["scene", "summary", "outline", "setting", "canon"], default=None)
     search_parser.add_argument(
         "--center-entities",
         required=False,
         help="中心实体列表（JSON 数组或逗号分隔）",
     )
+
+    # 索引 hierarchy.db 内容
+    subparsers.add_parser("index-hierarchy")
 
     argv = normalize_global_project_root(sys.argv[1:])
     args = parser.parse_args(argv)
@@ -1586,6 +1744,15 @@ def main():
             emit_success(result, message="indexed_with_warnings", chapter=args.chapter)
         else:
             emit_success(result, message="indexed", chapter=args.chapter)
+
+    elif args.command == "index-hierarchy":
+        project_root = args.project_root or str(adapter.config.project_root)
+        result = asyncio.run(index_hierarchy_content(project_root, adapter=adapter))
+        adapter.touch_consistency_meta(source="rag_adapter.index-hierarchy")
+        if result["errors"] > 0:
+            emit_success(result, message="hierarchy_indexed_with_warnings")
+        else:
+            emit_success(result, message="hierarchy_indexed")
 
     elif args.command == "search":
         center_entities: list[str] | None = None
