@@ -1,36 +1,4 @@
-function createRequestUrl(pathname) {
-    return new URL(pathname, window.location.origin).toString()
-}
-
-async function requestJSON(pathname, { signal } = {}) {
-    let response
-    try {
-        response = await fetch(createRequestUrl(pathname), { signal })
-    } catch {
-        throw new Error('无法连接到运行时服务，请确认后端已启动。')
-    }
-
-    const rawText = await response.text()
-    let payload = {}
-    if (rawText) {
-        try {
-            payload = JSON.parse(rawText)
-        } catch {
-            payload = { message: rawText }
-        }
-    }
-
-    if (!response.ok) {
-        const details = payload?.detail || payload
-        const message = details?.message || `${response.status} ${response.statusText}`
-        const error = new Error(message)
-        error.status = response.status
-        error.details = details?.details || null
-        throw error
-    }
-
-    return payload
-}
+import { requestJSON } from './http.js'
 
 function normalizeGenerationProfile(generation) {
     if (!generation || typeof generation !== 'object') {
@@ -55,7 +23,11 @@ function normalizeGenerationProfile(generation) {
 }
 
 export async function fetchRuntimeProfile({ signal } = {}) {
-    const payload = await requestJSON('/api/runtime/profile', { signal })
+    const payload = await requestJSON('/api/runtime/profile', {
+        signal,
+        catchNetwork: true,
+        networkMessage: '无法连接到运行时服务，请确认后端已启动。',
+    })
     return {
         ...payload,
         generation: normalizeGenerationProfile(payload?.generation),

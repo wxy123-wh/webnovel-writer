@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Runtime](https://img.shields.io/badge/Runtime-Agent-blue.svg)](#)
 
-`Webnovel Writer` 的主产品形态是**对话式 Chat Agent 写作台**。仓库内仍保留 CLI、Dashboard、VS Code companion 等能力，但现在统一围绕一个成熟的本地启动体验：**从仓库根目录启动，不要求用户了解内部模块路径**。
+`Webnovel Writer` 的主产品形态是**对话式 Chat Agent 写作台**。仓库内仍保留 CLI、Dashboard 等能力，但现在统一围绕一个成熟的本地启动体验：**从仓库根目录启动，不要求用户了解内部模块路径**。
 
 ## 环境要求
 
@@ -113,7 +113,7 @@ python -X utf8 webnovel-writer/scripts/webnovel.py --project-root /path/to/proje
 
 - **主入口：Chat Agent / Chat UI**
 - **核心内核：Skill + Pipeline + RAG**
-- **伴随入口：CLI / VS Code Companion**
+- **伴随入口：CLI**
 
 当前 shipped 的 Dashboard 页面只保留 Chat 创作工作台这一条用户路径；CLI 继续负责自动化、索引、RAG 与运维脚本能力。
 

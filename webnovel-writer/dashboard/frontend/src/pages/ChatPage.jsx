@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createChat, listChats } from '../api/chat.js'
+import { createChat, deleteChat, listChats } from '../api/chat.js'
 import { fetchRuntimeProfile } from '../api/runtime.js'
 import PageScaffold from '../components/PageScaffold.jsx'
 import ChatShell from '../components/chat/ChatShell.jsx'
@@ -87,6 +87,19 @@ export default function ChatPage() {
         }
     }, [chats.length, generationConfigured])
 
+    const handleDeleteChat = useCallback(async (chatId) => {
+        try {
+            await deleteChat(chatId)
+            const list = await listChats()
+            setChats(list)
+            if (chatId === activeChatId) {
+                setActiveChatId(list[0]?.chat_id || null)
+            }
+        } catch (deleteError) {
+            setError(deleteError?.message || '删除对话失败')
+        }
+    }, [activeChatId])
+
     const badge = useMemo(() => {
         if (runtimeLoading) return '检查运行时'
         if (runtimeError) return '连接异常'
@@ -153,15 +166,24 @@ export default function ChatPage() {
 
                     <div className="chat-list">
                         {chats.map(chat => (
-                            <button
-                                key={chat.chat_id}
-                                className={`chat-list-item ${chat.chat_id === activeChatId ? 'active' : ''}`}
-                                onClick={() => setActiveChatId(chat.chat_id)}
-                                type="button"
-                            >
-                                <span className="chat-list-title">{chat.title || '未命名'}</span>
-                                <span className="chat-list-time">{formatChatTime(chat.updated_at)}</span>
-                            </button>
+                            <div key={chat.chat_id} className={`chat-list-item ${chat.chat_id === activeChatId ? 'active' : ''}`}>
+                                <button
+                                    className="chat-list-item-main"
+                                    onClick={() => setActiveChatId(chat.chat_id)}
+                                    type="button"
+                                >
+                                    <span className="chat-list-title">{chat.title || '未命名'}</span>
+                                    <span className="chat-list-time">{formatChatTime(chat.updated_at)}</span>
+                                </button>
+                                <button
+                                    className="chat-list-delete"
+                                    onClick={(e) => { e.stopPropagation(); void handleDeleteChat(chat.chat_id) }}
+                                    type="button"
+                                    title="删除"
+                                >
+                                    ×
+                                </button>
+                            </div>
                         ))}
                     </div>
                 </div>

@@ -1,3 +1,5 @@
+import { requestJSON as baseRequestJSON, toNetworkError } from './http.js'
+
 const API_ROOT = '/api/skills'
 const DEFAULT_WORKSPACE_ID = 'workspace-default'
 const WORKSPACE_ID_STORAGE_KEY = 'webnovel.workspace_id'
@@ -74,70 +76,22 @@ function normalizeWorkspaceContext(options = {}) {
     }
 }
 
-function buildURL(path, query) {
-    const url = new URL(path, window.location.origin)
-
-    if (query) {
-        Object.entries(query).forEach(([key, value]) => {
-            if (value === undefined || value === null || value === '') {
-                return
-            }
-            if (typeof value === 'boolean') {
-                url.searchParams.set(key, value ? 'true' : 'false')
-                return
-            }
-            url.searchParams.set(key, String(value))
-        })
-    }
-
-    return url.toString()
-}
-
 async function requestJSON(path, { method = 'GET', query, body } = {}) {
-    const requestInit = {
-        method,
-        headers: {},
-    }
-
-    if (body !== undefined) {
-        requestInit.headers['Content-Type'] = 'application/json'
-        requestInit.body = JSON.stringify(body)
-    }
-
-    let response
     try {
-        response = await fetch(buildURL(path, query), requestInit)
+        return await baseRequestJSON(path, { method, query, body })
     } catch (error) {
-        throw new SkillsApiError('Failed to connect to skills service.', {
-            status: 0,
-            errorCode: 'skills_network_error',
-            errorType: 'network',
-            details: { error: String(error) },
-        })
+        if (error instanceof SkillsApiError) throw error
+        const errorCode = error.errorCode || 'skills_api_error'
+        throw new SkillsApiError(
+            error.message || 'Skills API request failed.',
+            {
+                status: error.status || 0,
+                errorCode,
+                errorType: inferErrorType({ status: error.status || 0, errorCode }),
+                details: error.details || null,
+            },
+        )
     }
-
-    const rawText = await response.text()
-    let payload = null
-    if (rawText) {
-        try {
-            payload = JSON.parse(rawText)
-        } catch {
-            payload = null
-        }
-    }
-
-    if (!response.ok) {
-        const fallbackMessage = `${response.status} ${response.statusText}`
-        const resolvedCode = payload?.error_code || 'skills_api_error'
-        throw new SkillsApiError(payload?.message || fallbackMessage, {
-            status: response.status,
-            errorCode: resolvedCode,
-            errorType: inferErrorType({ status: response.status, errorCode: resolvedCode }),
-            details: payload?.details ?? payload ?? null,
-        })
-    }
-
-    return payload ?? {}
 }
 
 function normalizeSkillItem(item = {}) {

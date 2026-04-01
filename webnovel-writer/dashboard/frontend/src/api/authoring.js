@@ -1,3 +1,5 @@
+import { requestJSON } from './http.js'
+
 const REVISIONED_ENTITY_TYPES = new Set(['outline', 'plot', 'chapter', 'setting'])
 
 function toCamelCaseKey(key) {
@@ -21,51 +23,6 @@ const ENTITY_CONFIG = {
     chapter: { idKey: 'chapter_id', parentKey: 'scene_id' },
     setting: { idKey: 'setting_id', parentKey: null },
     canon_entry: { idKey: 'canon_id', parentKey: null },
-}
-
-function createRequestUrl(pathname, query = {}) {
-    const url = new URL(pathname, window.location.origin)
-    Object.entries(query).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && `${value}`.trim() !== '') {
-            url.searchParams.set(key, value)
-        }
-    })
-    return url.toString()
-}
-
-function parsePayload(rawText) {
-    if (!rawText) return {}
-    try {
-        return JSON.parse(rawText)
-    } catch {
-        return { message: rawText }
-    }
-}
-
-function toApiError(response, payload) {
-    const details = payload?.detail || payload
-    const message = details?.message || `${response.status} ${response.statusText}`
-    const error = new Error(message)
-    error.status = response.status
-    error.errorCode = details?.error_code || 'api_request_failed'
-    error.details = details?.details || null
-    error.requestId = details?.request_id || null
-    return error
-}
-
-async function requestJSON(pathname, { method = 'GET', query, body, signal } = {}) {
-    const response = await fetch(createRequestUrl(pathname, query), {
-        method,
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-        signal,
-    })
-
-    const payload = parsePayload(await response.text())
-    if (!response.ok) {
-        throw toApiError(response, payload)
-    }
-    return payload
 }
 
 function normalizeEntity(entityType, raw) {

@@ -17,8 +17,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sqlite3
 import subprocess
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -677,6 +679,120 @@ def init_project(
         )
         + "\n",
     )
+
+    # hierarchy.db 初始化：创建表 + 插入 book_root + 种子数据
+    try:
+        # 将 webnovel-writer 包加入 path 以便导入 schema 模块
+        _ww_root = Path(__file__).resolve().parent.parent
+        if str(_ww_root) not in sys.path:
+            sys.path.insert(0, str(_ww_root))
+        from core.book_hierarchy.schema import ensure_schema, get_hierarchy_db_path
+
+        db_path = get_hierarchy_db_path(project_path)
+        ensure_schema(db_path)
+
+        now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        book_id = str(uuid.uuid4())
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("PRAGMA foreign_keys = ON")
+            # 插入 book_root（若 project_root 已存在 active 记录则跳过）
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO book_roots
+                    (book_id, project_root, title, synopsis, status, version, created_at, updated_at)
+                VALUES (?, ?, ?, '', 'active', 1, ?, ?)
+                """,
+                (book_id, str(project_path), title, now_iso, now_iso),
+            )
+
+            # 获取实际的 book_id（可能是刚插入的，也可能是已有的）
+            row = conn.execute(
+                "SELECT book_id FROM book_roots WHERE project_root = ? AND status = 'active'",
+                (str(project_path),),
+            ).fetchone()
+            actual_book_id = row[0] if row else book_id
+
+            # 种子数据：从已生成的大纲/*.md 文件导入 outlines
+            outlines_dir = project_path / "大纲"
+            if outlines_dir.is_dir():
+                existing_outlines = {
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT title FROM outlines WHERE book_id = ?", (actual_book_id,)
+                    ).fetchall()
+                }
+                sort_order = conn.execute(
+                    "SELECT COALESCE(MAX(position), 0) FROM outlines WHERE book_id = ?",
+                    (actual_book_id,),
+                ).fetchone()[0]
+                for md_file in sorted(outlines_dir.glob("*.md")):
+                    md_title = md_file.stem
+                    if md_title in existing_outlines:
+                        continue
+                    body = md_file.read_text(encoding="utf-8")
+                    sort_order += 1
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO outlines
+                            (outline_id, book_id, title, body, metadata_json, position, version, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, '{}', ?, 1, ?, ?)
+                        """,
+                        (
+                            str(uuid.uuid4()),
+                            actual_book_id,
+                            md_title,
+                            body,
+                            sort_order,
+                            now_iso,
+                            now_iso,
+                        ),
+                    )
+
+            # 种子数据：从已生成的设定集/*.md 文件导入 settings
+            settings_dir = project_path / "设定集"
+            if settings_dir.is_dir():
+                existing_settings = {
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT title FROM settings WHERE book_id = ?", (actual_book_id,)
+                    ).fetchall()
+                }
+                sort_order = conn.execute(
+                    "SELECT COALESCE(MAX(position), 0) FROM settings WHERE book_id = ?",
+                    (actual_book_id,),
+                ).fetchone()[0]
+                for md_file in sorted(settings_dir.glob("*.md")):
+                    md_title = md_file.stem
+                    if md_title in existing_settings:
+                        continue
+                    body = md_file.read_text(encoding="utf-8")
+                    sort_order += 1
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO settings
+                            (setting_id, book_id, title, body, metadata_json, position, version, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, '{}', ?, 1, ?, ?)
+                        """,
+                        (
+                            str(uuid.uuid4()),
+                            actual_book_id,
+                            md_title,
+                            body,
+                            sort_order,
+                            now_iso,
+                            now_iso,
+                        ),
+                    )
+
+            conn.commit()
+        finally:
+            conn.close()
+
+        print(f"hierarchy.db initialized at: {db_path}")
+    except Exception as e:
+        print(f"hierarchy.db initialization failed (non-fatal): {e}")
 
     # Git 初始化（仅当项目目录内尚无 .git 且 Git 可用）
     git_dir = project_path / ".git"

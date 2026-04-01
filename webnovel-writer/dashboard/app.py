@@ -979,6 +979,157 @@ def create_app(
         return None
 
     # ===========================================================
+    # API：项目初始化
+    # ===========================================================
+
+    @app.post("/api/books/init", status_code=201)
+    async def init_book(request: Request):
+        """创建新的 webnovel 项目，调用 scripts/init_project.init_project()。
+
+        请求体 JSON 必须包含 title、genre、project_dir，其余为可选参数。
+        成功时返回 { "project_root", "book_id", "title" }。
+        """
+        from scripts.init_project import init_project
+        from core.book_hierarchy.schema import get_hierarchy_db_path
+
+        try:
+            payload: Any = await request.json()
+        except json.JSONDecodeError:
+            _raise_api_error(
+                400,
+                error_code="invalid_json_body",
+                message="请求体必须是合法 JSON",
+            )
+
+        if not isinstance(payload, dict):
+            _raise_api_error(
+                400,
+                error_code="invalid_request_body",
+                message="请求体必须是 JSON 对象",
+            )
+
+        # --- 必填字段校验 ---
+        title = payload.get("title")
+        genre = payload.get("genre")
+        project_dir = payload.get("project_dir")
+
+        missing: list[str] = []
+        if not title or not isinstance(title, str) or not title.strip():
+            missing.append("title")
+        if not genre or not isinstance(genre, str) or not genre.strip():
+            missing.append("genre")
+        if not project_dir or not isinstance(project_dir, str) or not project_dir.strip():
+            missing.append("project_dir")
+
+        if missing:
+            _raise_api_error(
+                400,
+                error_code="missing_required_fields",
+                message=f"缺少必填字段: {', '.join(missing)}",
+                details={"missing_fields": missing},
+            )
+
+        # validated — guaranteed non-empty str after the check above
+        assert isinstance(title, str) and isinstance(genre, str) and isinstance(project_dir, str)
+        _title = title.strip()
+        _genre = genre.strip()
+        _project_dir = project_dir.strip()
+
+        # --- 可选参数（与 init_project 签名对齐） ---
+        optional_keys = [
+            "protagonist_name",
+            "target_words",
+            "target_chapters",
+            "golden_finger_name",
+            "golden_finger_type",
+            "golden_finger_style",
+            "core_selling_points",
+            "protagonist_structure",
+            "heroine_config",
+            "heroine_names",
+            "heroine_role",
+            "co_protagonists",
+            "co_protagonist_roles",
+            "antagonist_tiers",
+            "world_scale",
+            "factions",
+            "power_system_type",
+            "social_class",
+            "resource_distribution",
+            "gf_visibility",
+            "gf_irreversible_cost",
+            "protagonist_desire",
+            "protagonist_flaw",
+            "protagonist_archetype",
+            "antagonist_level",
+            "target_reader",
+            "platform",
+            "currency_system",
+            "currency_exchange",
+            "sect_hierarchy",
+            "cultivation_chain",
+            "cultivation_subtiers",
+        ]
+
+        kwargs: dict[str, Any] = {}
+        for key in optional_keys:
+            if key in payload:
+                kwargs[key] = payload[key]
+
+        # --- 检查项目是否已存在（state.json 存在视为冲突） ---
+        target_path = Path(_project_dir).expanduser().resolve()
+        state_file = target_path / ".webnovel" / "state.json"
+        if state_file.is_file():
+            _raise_api_error(
+                409,
+                error_code="project_already_exists",
+                message="该项目目录已存在 state.json，不能重复初始化",
+                details={"project_dir": str(target_path)},
+            )
+
+        # --- 调用 init_project ---
+        try:
+            init_project(_project_dir, _title, _genre, **kwargs)
+        except FileExistsError as exc:
+            _raise_api_error(
+                409,
+                error_code="project_already_exists",
+                message="项目目录已存在",
+                details={"error": str(exc)},
+            )
+        except ValueError as exc:
+            _raise_api_error(
+                400,
+                error_code="invalid_params",
+                message=str(exc),
+            )
+        except SystemExit as exc:
+            _raise_api_error(
+                400,
+                error_code="init_project_error",
+                message=str(exc),
+            )
+
+        # --- 读取 book_id from hierarchy.db ---
+        project_root = Path(_project_dir).expanduser().resolve()
+        hierarchy_db = get_hierarchy_db_path(project_root)
+        book_id: str | None = None
+        if hierarchy_db.is_file():
+            with closing(sqlite3.connect(str(hierarchy_db))) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT book_id FROM book_roots WHERE status = 'active' LIMIT 1"
+                ).fetchone()
+                if row:
+                    book_id = row["book_id"]
+
+        return {
+            "project_root": str(project_root),
+            "book_id": book_id,
+            "title": _title,
+        }
+
+    # ===========================================================
     # API：文档浏览（正文/大纲/设定集 —— 只读）
     # ===========================================================
 

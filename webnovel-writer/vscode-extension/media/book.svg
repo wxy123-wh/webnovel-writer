@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none">
-  <path d="M3 2.5A1.5 1.5 0 0 1 4.5 1H13v12.5H4.75A1.75 1.75 0 0 0 3 15.25V2.5Z" fill="#4F6BED"/>
-  <path d="M4.75 14H13v1H4.75A1.25 1.25 0 0 0 3.5 16H2V2.5A2.5 2.5 0 0 1 4.5 0H13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4.75A.75.75 0 0 0 4 15.75V16H3a1 1 0 0 1-1-1V2.5A2.5 2.5 0 0 1 4.5 0" fill="#1F2A44"/>
-  <path d="M5.5 4h5v1h-5V4Zm0 2h5v1h-5V6Zm0 2h3.5v1H5.5V8Z" fill="#FFFFFF"/>
-</svg>

@@ -243,13 +243,19 @@ def _resolve_generation_settings(*, project_root: Path) -> dict[str, str]:
 
 
 def _read_generation_value(project_env: dict[str, str], key: str, aliases: tuple[str, ...] = ()) -> str:
+    """Read a generation-related env value, preferring the project .env file over os.environ.
+
+    This ensures that after a PATCH writes new values to .env, subsequent GETs
+    return the freshly-saved values rather than stale os.environ entries.
+    os.environ is still used as fallback (important for Docker deployments).
+    """
     for candidate in (key, *aliases):
-        env_value = str(os.environ.get(candidate, "") or "").strip()
-        if env_value:
-            return env_value
         project_value = str(project_env.get(candidate, "") or "").strip()
         if project_value:
             return project_value
+        env_value = str(os.environ.get(candidate, "") or "").strip()
+        if env_value:
+            return env_value
     return ""
 
 

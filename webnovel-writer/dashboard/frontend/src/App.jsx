@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { ContextMenuProvider } from './components/ContextMenuProvider.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import ChatPage from './pages/ChatPage.jsx'
-import OutlineWorkspacePage from './pages/OutlineWorkspacePage.jsx'
+import CreationDeskPage from './pages/CreationDeskPage.jsx'
+import DataPanelPage from './pages/DataPanelPage.jsx'
 import SkillsPage from './pages/SkillsPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 
@@ -16,11 +17,22 @@ const Icons = {
             <path d="M8 9h8" /><path d="M8 13h5" />
         </svg>
     ),
-    workspace: (
+    'creation-desk': (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="4" />
-            <rect x="3" y="10" width="12" height="4" />
-            <rect x="3" y="16" width="8" height="4" />
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+        </svg>
+    ),
+    'data-panel': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="12" width="4" height="9" />
+            <rect x="10" y="7" width="4" height="14" />
+            <rect x="17" y="3" width="4" height="18" />
+        </svg>
+    ),
+    skills: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 2l2.5 5.5L20 10l-5.5 2.5L12 18l-2.5-5.5L4 10l5.5-2.5L12 2z" />
         </svg>
     ),
     settings: (
@@ -29,16 +41,12 @@ const Icons = {
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 8.92 4.6H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c0 .68.4 1.3 1.03 1.57.17.07.35.11.54.11H21a2 2 0 0 1 0 4h-.09c-.19 0-.37.04-.54.11-.63.27-1.03.89-1.03 1.57z" />
         </svg>
     ),
-    skills: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 2l2.5 5.5L20 10l-5.5 2.5L12 18l-2.5-5.5L4 10l5.5-2.5L12 2z" />
-        </svg>
-    ),
 }
 
 const ROUTES = [
     { id: 'chat', icon: Icons.chat, label: 'Chat', component: ChatPage },
-    { id: 'workspace', icon: Icons.workspace, label: 'Workspace', component: OutlineWorkspacePage },
+    { id: 'creation-desk', icon: Icons['creation-desk'], label: '创作台', component: CreationDeskPage },
+    { id: 'data-panel', icon: Icons['data-panel'], label: '数据面板', component: DataPanelPage },
     { id: 'skills', icon: Icons.skills, label: 'Skills', component: SkillsPage },
     { id: 'settings', icon: Icons.settings, label: 'Settings', component: SettingsPage },
 ]
@@ -121,7 +129,7 @@ export default function App() {
                     </nav>
 
                     <div className="sidebar-note">
-                        Chat 负责创作推进，Workspace 负责层级/章节/设定编辑与评审，Skills 负责模板技能库，Settings 负责 provider 配置。
+                        Chat 负责创作推进，创作台负责层级/章节编辑与评审，数据面板负责统计分析，Skills 负责模板技能库，Settings 负责 provider 配置。
                     </div>
 
                     <div className="live-indicator">

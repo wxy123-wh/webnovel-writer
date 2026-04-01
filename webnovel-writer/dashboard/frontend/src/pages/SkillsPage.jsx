@@ -193,6 +193,7 @@ export default function SkillsPage() {
     const [form, setForm] = useState(DEFAULT_SKILL_FORM)
     const [chatInput, setChatInput] = useState('')
     const [chatMessages, setChatMessages] = useState(INITIAL_CHAT_MESSAGES)
+    const [generationConfigError, setGenerationConfigError] = useState(false)
     const [runtimeGeneration, setRuntimeGeneration] = useState({ skillDraftAvailable: false, provider: '', model: '' })
 
     const refresh = useCallback(async () => {
@@ -316,10 +317,18 @@ export default function SkillsPage() {
             ]))
             setChatInput('')
         } catch (err) {
+            const isConfigError = err?.status === 503
+                || err?.errorCode === 'generation_unavailable'
+                || err?.error_code === 'generation_unavailable'
+            if (isConfigError) {
+                setGenerationConfigError(true)
+            }
             setError(err)
             setChatMessages(current => ([
                 ...current,
-                { role: 'assistant', content: '这次模型生成失败了。你可以检查运行时配置后重试，或先改用右侧表单和“直接写入草稿”。' },
+                { role: 'assistant', content: isConfigError
+                    ? '请先在 Settings 中配置 Provider 和 API Key，才能使用 AI 生成功能。'
+                    : '这次模型生成失败了。你可以检查运行时配置后重试，或先改用右侧表单和"直接写入草稿"。' },
             ]))
         } finally {
             setGeneratingDraft(false)
@@ -327,6 +336,7 @@ export default function SkillsPage() {
     }, [chatInput, form, generatingDraft, handleLocalDraftWrite, runtimeGeneration.skillDraftAvailable])
 
     const handleResetDraft = useCallback(() => {
+        setGenerationConfigError(false)
         setForm(DEFAULT_SKILL_FORM)
         setChatInput('')
         setChatMessages(INITIAL_CHAT_MESSAGES)
@@ -383,7 +393,25 @@ export default function SkillsPage() {
                 </p>
             </div>
 
-            {error ? (
+            {error && generationConfigError ? (
+                <div className="card" role="alert">
+                    <div className="card-header">
+                        <span className="card-title">生成服务不可用</span>
+                        <span className="card-badge badge-red">配置缺失</span>
+                    </div>
+                    <p style={{ margin: 0 }}>请先在 Settings 中配置 Provider 和 API Key，才能使用 AI 生成功能。</p>
+                    <button
+                        className="page-btn"
+                        type="button"
+                        style={{ marginTop: '0.75rem' }}
+                        onClick={() => { window.location.hash = '#/settings' }}
+                    >
+                        前往 Settings 配置
+                    </button>
+                </div>
+            ) : null}
+
+            {error && !generationConfigError ? (
                 <div className="card" role="alert">
                     <div className="card-header">
                         <span className="card-title">错误反馈</span>

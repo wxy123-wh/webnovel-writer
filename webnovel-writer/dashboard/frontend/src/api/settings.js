@@ -1,3 +1,5 @@
+import { requestJSON } from './http.js'
+
 const DEFAULT_WORKSPACE_ID = 'workspace-default'
 
 function resolveProjectRoot(explicitProjectRoot) {
@@ -24,48 +26,6 @@ function buildWorkspace({ workspaceId, projectRoot } = {}) {
         workspace_id: workspaceId || DEFAULT_WORKSPACE_ID,
         project_root: resolveProjectRoot(projectRoot),
     }
-}
-
-function createRequestUrl(pathname, query = {}) {
-    const url = new URL(pathname, window.location.origin)
-    Object.entries(query).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && `${value}`.trim() !== '') {
-            url.searchParams.set(key, value)
-        }
-    })
-    return url.toString()
-}
-
-async function requestJSON(pathname, { method = 'GET', query, body, signal } = {}) {
-    const response = await fetch(createRequestUrl(pathname, query), {
-        method,
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-        signal,
-    })
-
-    const rawText = await response.text()
-    let payload = {}
-    if (rawText) {
-        try {
-            payload = JSON.parse(rawText)
-        } catch {
-            payload = { message: rawText }
-        }
-    }
-
-    if (!response.ok) {
-        const details = payload?.detail || payload
-        const errorCode = details?.error_code || 'api_request_failed'
-        const message = details?.message || `${response.status} ${response.statusText}`
-        const error = new Error(message)
-        error.status = response.status
-        error.errorCode = errorCode
-        error.details = details?.details || null
-        throw error
-    }
-
-    return payload
 }
 
 function normalizeDictionaryItem(item) {
