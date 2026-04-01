@@ -568,6 +568,79 @@ body {
   gap: 14px;
 }
 
+/* -------------------------------------------------------------------------- */
+/* CreationDeskPage – sectioned tree navigation                               */
+/* -------------------------------------------------------------------------- */
+
+.creation-desk-section {
+  margin-bottom: 6px;
+}
+
+.creation-desk-section-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 2px solid var(--border-soft);
+  background: var(--bg-card-2);
+  color: var(--text-main);
+  padding: 8px 10px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.creation-desk-section-header:hover {
+  background: #ffe9b0;
+}
+
+.creation-desk-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.creation-desk-section-icon {
+  font-size: 14px;
+}
+
+.creation-desk-section-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+
+.creation-desk-chevron {
+  font-size: 11px;
+  color: var(--text-mute);
+}
+
+.creation-desk-section-list {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0 2px 6px;
+}
+
+.creation-desk-empty-item {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-mute);
+  font-style: italic;
+}
+
+.creation-desk-create-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 2px dashed var(--border-soft);
+}
+
 .workspace-diff-box {
   min-height: 280px;
   border: 2px solid var(--border-soft);

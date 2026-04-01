@@ -216,6 +216,7 @@ class GenerationAPIClient:
         *,
         messages: list[dict[str, str]],
         expect_json: bool,
+        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.config.generation_model,
@@ -225,6 +226,8 @@ class GenerationAPIClient:
         }
         if expect_json:
             payload["response_format"] = {"type": "json_object"}
+        if tools:
+            payload["tools"] = tools
         return payload
 
     def _request_openai(self, *, messages: list[dict[str, str]], expect_json: bool) -> str:
@@ -275,6 +278,104 @@ class GenerationAPIClient:
             self.stats.total_calls += 1
             self.stats.total_time += time.time() - start
             return result
+        except Exception:
+            self.stats.errors += 1
+            raise
+
+    def _request_openai_with_tools(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Non-streaming request that returns the full response payload for tool call extraction."""
+        if not self.config.generation_api_key:
+            raise ValueError("GENERATION_API_KEY / OPENAI_API_KEY is required for openai generation mode")
+
+        url = self._build_url()
+        headers = self._build_headers()
+        payload = self._build_payload(messages=messages, expect_json=False, tools=tools)
+        max_retries = getattr(self.config, "api_max_retries", 3)
+        base_delay = getattr(self.config, "api_retry_delay", 1.0)
+
+        for attempt in range(max_retries):
+            req = request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with request.urlopen(req, timeout=self.config.normal_timeout) as resp:
+                    raw = resp.read().decode("utf-8")
+                    data = json.loads(raw)
+                    return data
+            except error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="ignore")
+                if exc.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    time.sleep(base_delay * (2 ** attempt))
+                    continue
+                raise RuntimeError(f"generation HTTP {exc.code}: {body[:200]}") from exc
+            except Exception:
+                if attempt < max_retries - 1:
+                    time.sleep(base_delay * (2 ** attempt))
+                    continue
+                raise
+
+        raise RuntimeError("generation request exhausted retries")
+
+    @staticmethod
+    def extract_tool_calls(response_data: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract tool_calls from an OpenAI chat completion response."""
+        choices = response_data.get("choices")
+        if not isinstance(choices, list) or not choices:
+            return []
+        message = choices[0].get("message")
+        if not isinstance(message, dict):
+            return []
+        tool_calls = message.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            return []
+        return tool_calls
+
+    @staticmethod
+    def extract_tool_call_content(response_data: dict[str, Any]) -> str:
+        """Extract text content alongside tool calls."""
+        choices = response_data.get("choices")
+        if not isinstance(choices, list) or not choices:
+            return ""
+        message = choices[0].get("message")
+        if not isinstance(message, dict):
+            return ""
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        return ""
+
+    def complete_with_tools(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Complete with tool support. Returns (text_content, tool_calls).
+
+        Falls back to local text if provider is local/stub.
+        """
+        start = time.time()
+        try:
+            if self.config.generation_api_type in ("stub", "local"):
+                text = self._complete_local_text(messages=messages)
+                self.stats.total_calls += 1
+                self.stats.total_time += time.time() - start
+                return text, []
+
+            response_data = self._request_openai_with_tools(messages=messages, tools=tools)
+            text = self.extract_tool_call_content(response_data)
+            tool_calls = self.extract_tool_calls(response_data)
+            self.stats.total_calls += 1
+            self.stats.total_time += time.time() - start
+            return text, tool_calls
         except Exception:
             self.stats.errors += 1
             raise

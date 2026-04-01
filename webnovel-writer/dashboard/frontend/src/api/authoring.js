@@ -253,6 +253,19 @@ export async function markIndexStale({ bookId, reason, signal }) {
     })
 }
 
+export async function createEntity({ bookId, entityType, parentId, title, body, metadata, signal }) {
+    return requestJSON(`/api/hierarchy/books/${bookId}/entities/${entityType}`, {
+        method: 'POST',
+        body: {
+            parent_id: parentId || null,
+            title: title || '',
+            body: body || '',
+            metadata: metadata || {},
+        },
+        signal,
+    })
+}
+
 export async function rebuildIndex({ bookId, signal }) {
     return requestJSON(`/api/hierarchy/books/${bookId}/index/rebuild`, {
         method: 'POST',

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .chat_skill_models import ChatSkill
+from .chat_skill_models import ChatSkill, get_hierarchy_tool_definitions
 
 
 SKILL_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -35,6 +35,10 @@ class ChatSkillRegistry:
     def __init__(self, project_root: Path | None = None):
         self.project_root = Path(project_root) if project_root is not None else None
         self._base = Path(__file__).resolve().parents[2]
+
+    def get_hierarchy_tools(self) -> list[dict[str, Any]]:
+        """Return the hierarchy CRUD tools in OpenAI function-calling format."""
+        return get_hierarchy_tool_definitions()
 
     def get_skill_content(self, skill_id: str, *, source: str = "system") -> str | None:
         content_path: Path | None = None
